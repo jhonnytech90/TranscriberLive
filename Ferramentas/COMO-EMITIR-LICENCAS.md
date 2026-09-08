@@ -11,7 +11,9 @@ Na pasta `Documentos/TranscriberLive-Licencas` do seu Mac:
 
 | Arquivo | O que é |
 |---|---|
-| `licenca.py` | o gerador (só Python 3, que o macOS já tem) |
+| **`Gerador de Licencas.command`** | **duplo clique aqui** — abre o app com interface |
+| `licenca_gui.py` | o app (interface); precisa do `licenca.py` na mesma pasta |
+| `licenca.py` | o motor (também serve por linha de comando) |
 | `transcriberlive-private.key` | **sua chave privada — o segredo do negócio** |
 | `transcriberlive-public.txt` | a chave pública (já está embutida no plugin) |
 
@@ -25,18 +27,23 @@ para dentro do plugin.
 1. O cliente instala o plugin. Sem licença, o Receiver abre no painel **LICENÇA**, mostrando
    o **ID desta máquina** (algo como `TL-1147-89DF-849C`) e um botão **Copiar**.
 2. Ele te manda esse ID, o nome completo e o e-mail.
-3. Você emite:
+3. Você abre o **Gerador de Licenças** (duplo clique em `Gerador de Licencas.command`),
+   preenche nome, e-mail e cola o ID — pode colar em qualquer formato, ele normaliza — e
+   clica em **GERAR LICENÇA**. A licença já sai **copiada na área de transferência** e salva
+   em `licencas/`.
+4. Você cola o texto no e-mail/WhatsApp do cliente. Ele cola no campo do plugin e clica
+   **Ativar**. Pronto — vale para sempre naquele computador, sem internet.
+
+O app tem três abas: **Emitir licença**, **Emitidas** (histórico de tudo que você já vendeu,
+gravado em `licencas-emitidas.csv`, com botão de backup da chave privada) e **Verificar**
+(confere uma licença que o cliente diz que não funciona).
+
+## Pela linha de comando (alternativa ao app)
 
 ```bash
 cd ~/Documents/TranscriberLive-Licencas
 python3 licenca.py nova --nome "Joao da Silva" --email joao@exemplo.com --maquina TL-1147-89DF-849C
 ```
-
-Isso imprime a licença e grava `licenca-joao-da-silva.txt`.
-
-4. Você manda o **conteúdo do arquivo** (o texto todo, das linhas `-----` inclusive) por
-   e-mail/WhatsApp. O cliente cola no campo do plugin e clica **Ativar**. Pronto — vale para
-   sempre naquele computador, sem internet.
 
 ## Variações
 
@@ -50,6 +57,8 @@ python3 licenca.py nova ... --nota "Pedido 1234 - Hotmart"
 # conferir uma licença que você emitiu
 python3 licenca.py verificar --arquivo licenca-joao-da-silva.txt
 ```
+
+No app, marque **Licença temporária** e informe os dias.
 
 ## Segundo computador
 

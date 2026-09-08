@@ -9,3 +9,7 @@ models/
 *private.key
 transcriberlive-private*
 licenca-*.txt
+Ferramentas/__pycache__/
+Ferramentas/licencas/
+Ferramentas/licencas-emitidas.csv
+Ferramentas/transcriberlive-public.txt
