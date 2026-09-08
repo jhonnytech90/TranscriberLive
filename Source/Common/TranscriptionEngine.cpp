@@ -42,6 +42,12 @@ void TranscriptionEngine::loadVadModel (const juce::File& vadFile)
     notify();
 }
 
+void TranscriptionEngine::unloadModels()
+{
+    hasPendingUnload.store (true);
+    notify();
+}
+
 juce::String TranscriptionEngine::getStatus() const
 {
     const juce::ScopedLock sl (statusLock);
@@ -86,6 +92,16 @@ void TranscriptionEngine::run()
 
 void TranscriptionEngine::handleModelRequests()
 {
+    if (hasPendingUnload.exchange (false))
+    {
+        if (ctx  != nullptr) { whisper_free (ctx); ctx = nullptr; }
+        if (vctx != nullptr) { whisper_vad_free (vctx); vctx = nullptr; }
+        modelLoaded.store (false);
+        vadLoaded.store (false);
+        const juce::ScopedLock sl (statusLock);
+        status = "Nenhum modelo carregado";
+    }
+
     if (hasPendingModel.exchange (false))
     {
         const auto file = pendingModel;

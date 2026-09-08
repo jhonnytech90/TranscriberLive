@@ -11,6 +11,11 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "" FORCE)
 endif()
 
+# fontes em UTF-8 (o MSVC precisa da flag explicita)
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 include(FetchContent)
 
 # ---------------------------------------------------------------------------
@@ -68,8 +73,8 @@ set(TL_COMMON_DEFS
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 # recursos compartilhados (página web do celular) + hub
-juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html)
-set(TL_COMMON_SOURCES Source/Common/Hub.cpp)
+juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html Resources/logoheader.png)
+set(TL_COMMON_SOURCES Source/Common/Hub.cpp Source/Common/License.cpp)
 
 # ---- Receiver ----
 juce_add_plugin(TranscriberLive
@@ -101,6 +106,7 @@ target_compile_definitions(TranscriberLive PUBLIC ${TL_COMMON_DEFS})
 target_link_libraries(TranscriberLive PRIVATE
     TranscriberDisplayData
     juce::juce_audio_utils
+    juce::juce_cryptography
     juce::juce_dsp
     whisper
     PUBLIC
@@ -137,6 +143,7 @@ target_compile_definitions(TranscriberLiveDisplay PUBLIC ${TL_COMMON_DEFS})
 target_link_libraries(TranscriberLiveDisplay PRIVATE
     TranscriberDisplayData
     juce::juce_audio_utils
+    juce::juce_cryptography
     PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
@@ -161,6 +168,7 @@ target_compile_definitions(TranscriberLiveDisplayApp PRIVATE ${TL_COMMON_DEFS} T
 target_link_libraries(TranscriberLiveDisplayApp PRIVATE
     TranscriberDisplayData
     juce::juce_audio_utils
+    juce::juce_cryptography
     juce::juce_gui_extra
     PUBLIC
     juce::juce_recommended_config_flags
@@ -179,11 +187,18 @@ if(TRANSCRIBER_BUILD_TESTS)
     target_link_libraries(EngineTest PRIVATE juce::juce_audio_formats juce::juce_gui_basics whisper
         PUBLIC juce::juce_recommended_config_flags)
 
+    juce_add_console_app(LicenseTest PRODUCT_NAME "LicenseTest")
+    target_sources(LicenseTest PRIVATE Tests/LicenseTest.cpp ${TL_COMMON_SOURCES})
+    target_include_directories(LicenseTest PRIVATE Source)
+    target_compile_definitions(LicenseTest PRIVATE ${TL_COMMON_DEFS})
+    target_link_libraries(LicenseTest PRIVATE TranscriberDisplayData juce::juce_cryptography juce::juce_graphics juce::juce_events juce::juce_core
+        PUBLIC juce::juce_recommended_config_flags)
+
     juce_add_gui_app(ReceiverTest PRODUCT_NAME "ReceiverTest")
     target_sources(ReceiverTest PRIVATE Tests/ReceiverTest.cpp Source/Receiver/ReceiverProcessor.cpp Source/Receiver/ReceiverEditor.cpp
         Source/Common/TranscriptionEngine.cpp ${TL_COMMON_SOURCES})
     target_include_directories(ReceiverTest PRIVATE Source)
     target_compile_definitions(ReceiverTest PRIVATE ${TL_COMMON_DEFS} JucePlugin_Name="Transcriber Live Receiver")
-    target_link_libraries(ReceiverTest PRIVATE TranscriberDisplayData juce::juce_gui_extra juce::juce_audio_formats juce::juce_audio_utils juce::juce_dsp juce::juce_audio_processors whisper
+    target_link_libraries(ReceiverTest PRIVATE TranscriberDisplayData juce::juce_cryptography juce::juce_gui_extra juce::juce_audio_formats juce::juce_audio_utils juce::juce_dsp juce::juce_audio_processors whisper
         PUBLIC juce::juce_recommended_config_flags)
 endif()

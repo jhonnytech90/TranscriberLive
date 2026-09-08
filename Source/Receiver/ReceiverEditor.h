@@ -4,6 +4,8 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "ReceiverProcessor.h"
 #include "Common/DarkLookAndFeel.h"
+#include "Common/Branding.h"
+#include "Common/LicenseComponent.h"
 
 //==============================================================================
 /** Medidor de nível com a linha do gate desenhada por cima. */
@@ -39,18 +41,23 @@ private:
     void applyIdentityFromUi();
     void loadIdentityToUi();
     void showNetwork();
+    void refreshLicenseUi();
+    void setControlsVisible (bool);
 
     TranscriberLiveAudioProcessor& processor;
     tl::DarkLookAndFeel lnf;
+    tl::LogoBadge logo;
 
-    juce::Label        titleLabel, statusLabel, speechLabel, lastLineLabel;
+    juce::Label        statusLabel, speechLabel, lastLineLabel;
     juce::Label        nameLabel, importanceLabel, modelLabel, gateLabel, vadLabel, holdLabel;
     juce::TextEditor   nameEditor;
-    juce::TextButton   colourButton { "Cor" }, networkButton { "Rede..." };
+    juce::TextButton   colourButton { "Cor" }, networkButton { "Rede..." },
+                       licenseButton { juce::String (juce::CharPointer_UTF8 ("Licen\xc3\xa7" "a")) };
     juce::ComboBox     importanceBox, modelBox;
     juce::ToggleButton flashButton { "Flash" }, partialsButton { "Parciais" };
     LevelMeter         meter;
     juce::Slider       gateSlider, vadSlider, holdSlider;
+    tl::LicensePanel   licensePanel;
 
     using APVTS = juce::AudioProcessorValueTreeState;
     std::unique_ptr<APVTS::SliderAttachment> gateAttachment, holdAttachment, vadAttachment;
@@ -58,7 +65,9 @@ private:
 
     juce::StringArray lastModelList;
     juce::uint32 lastModelScan = 0;
-    int lastLinesVersion = -1;
+    int  lastLinesVersion = -1;
+    bool licensePanelOpen = false;
+    bool lastLicensed = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TranscriberLiveAudioProcessorEditor)
 };

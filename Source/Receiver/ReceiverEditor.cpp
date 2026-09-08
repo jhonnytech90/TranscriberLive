@@ -8,6 +8,10 @@ namespace
     const juce::Colour kDim   = tl::col::dim;
 
     juce::String utf8 (const char* s) { return juce::String (juce::CharPointer_UTF8 (s)); }
+
+    constexpr int kHeaderH = 44;
+    constexpr int kLogoH   = 30;
+    constexpr int kFooterH = 40;
 }
 
 //==============================================================================
@@ -34,7 +38,9 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     : AudioProcessorEditor (&p), processor (p)
 {
     setLookAndFeel (&lnf);
-    setSize (620, 330);
+    setSize (680, 352);
+
+    addAndMakeVisible (logo);
 
     auto initLabel = [this] (juce::Label& l, const juce::String& text, float size, juce::Colour c, juce::Justification j = juce::Justification::left)
     {
@@ -45,12 +51,11 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
         addAndMakeVisible (l);
     };
 
-    initLabel (titleLabel,      "TRANSCRIBER LIVE  -  RECEIVER", 14.0f, kText);
-    initLabel (statusLabel,     "", 12.0f, kDim, juce::Justification::right);
+    initLabel (statusLabel,     "", 12.0f, kDim);
     initLabel (speechLabel,     "FALA", 12.0f, kDim, juce::Justification::centred);
     initLabel (lastLineLabel,   "", 15.0f, kDim);
     initLabel (nameLabel,       "Nome", 12.0f, kDim);
-    initLabel (importanceLabel, utf8 ("Import\xc3\xa2ncia"), 12.0f, kDim);
+    initLabel (importanceLabel, "Import.", 12.0f, kDim);
     initLabel (modelLabel,      "Modelo", 12.0f, kDim);
     initLabel (gateLabel,       "Gate", 12.0f, kDim, juce::Justification::centred);
     initLabel (vadLabel,        "Sensib. VAD", 12.0f, kDim, juce::Justification::centred);
@@ -94,6 +99,35 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     networkButton.onClick = [this] { showNetwork(); };
     addAndMakeVisible (networkButton);
 
+    licenseButton.onClick = [this]
+    {
+        licensePanelOpen = ! licensePanelOpen;
+        refreshLicenseUi();
+    };
+    addAndMakeVisible (licenseButton);
+
+    // ---- licença -----------------------------------------------------------------
+    licensePanel.onActivate = [this] (const juce::String& text)
+    {
+        const auto info = processor.activateLicense (text);
+        if (info.valid)
+        {
+            licensePanelOpen = false;
+            refreshModelList();
+        }
+        refreshLicenseUi();
+        if (! info.valid)
+            licensePanel.setStatus (info.error, true);
+    };
+    licensePanel.onRemove = [this]
+    {
+        processor.removeLicense();
+        licensePanelOpen = true;
+        refreshLicenseUi();
+    };
+    licensePanel.onClose = [this] { licensePanelOpen = false; refreshLicenseUi(); };
+    addChildComponent (licensePanel);
+
     // ---- modelo ------------------------------------------------------------------
     modelBox.onChange = [this]
     {
@@ -129,6 +163,7 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     partialsAttachment = std::make_unique<APVTS::ButtonAttachment> (apvts, TranscriberLiveAudioProcessor::kParamPartials, partialsButton);
 
     loadIdentityToUi();
+    refreshLicenseUi();
     startTimerHz (15);
 }
 
@@ -139,35 +174,45 @@ void TranscriberLiveAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (kBg);
     g.setColour (kPanel);
-    g.fillRect (getLocalBounds().removeFromTop (30));
-    g.fillRect (getLocalBounds().removeFromBottom (44));
+    g.fillRect (getLocalBounds().removeFromTop (kHeaderH));
+    g.fillRect (getLocalBounds().removeFromBottom (kFooterH));
 }
 
 void TranscriberLiveAudioProcessorEditor::resized()
 {
     auto r = getLocalBounds();
 
-    auto top = r.removeFromTop (30).reduced (12, 4);
-    titleLabel.setBounds (top.removeFromLeft (260));
+    // ---- topo: status à esquerda, logo à direita --------------------------------
+    auto top = r.removeFromTop (kHeaderH).reduced (12, 6);
+    auto logoArea = top.removeFromRight (tl::LogoBadge::widthForHeight (kLogoH));
+    logo.setBounds (logoArea.withSizeKeepingCentre (logoArea.getWidth(), kLogoH));
+    top.removeFromRight (12);
     statusLabel.setBounds (top);
 
-    auto bottom = r.removeFromBottom (44).reduced (12, 6);
+    auto bottom = r.removeFromBottom (kFooterH).reduced (12, 6);
     lastLineLabel.setBounds (bottom);
 
-    r.reduce (12, 6);
+    r.reduce (12, 8);
+
+    // painel de licença ocupa toda a área central quando visível
+    licensePanel.setBounds (r);
 
     // linha 1: identidade
     auto row1 = r.removeFromTop (30);
-    nameLabel.setBounds (row1.removeFromLeft (40));
-    nameEditor.setBounds (row1.removeFromLeft (150).reduced (0, 2));
+    networkButton.setBounds (row1.removeFromRight (66).reduced (0, 2));
+    row1.removeFromRight (6);
+    licenseButton.setBounds (row1.removeFromRight (74).reduced (0, 2));
+    row1.removeFromRight (6);
+    flashButton.setBounds (row1.removeFromRight (62));
+    row1.removeFromRight (10);
+
+    nameLabel.setBounds (row1.removeFromLeft (38));
+    nameEditor.setBounds (row1.removeFromLeft (146).reduced (0, 2));
     row1.removeFromLeft (6);
-    colourButton.setBounds (row1.removeFromLeft (52).reduced (0, 2));
+    colourButton.setBounds (row1.removeFromLeft (50).reduced (0, 2));
     row1.removeFromLeft (10);
-    importanceLabel.setBounds (row1.removeFromLeft (72));
-    importanceBox.setBounds (row1.removeFromLeft (118).reduced (0, 2));
-    row1.removeFromLeft (10);
-    flashButton.setBounds (row1.removeFromLeft (70));
-    networkButton.setBounds (row1.removeFromRight (70).reduced (0, 2));
+    importanceLabel.setBounds (row1.removeFromLeft (46));
+    importanceBox.setBounds (row1.removeFromLeft (juce::jmax (90, row1.getWidth())).reduced (0, 2));
 
     r.removeFromTop (6);
 
@@ -176,7 +221,7 @@ void TranscriberLiveAudioProcessorEditor::resized()
     modelLabel.setBounds (row2.removeFromLeft (52));
     modelBox.setBounds (row2.reduced (0, 2));
 
-    r.removeFromTop (8);
+    r.removeFromTop (10);
 
     // linha 3: medidor + FALA
     auto row3 = r.removeFromTop (18);
@@ -188,7 +233,7 @@ void TranscriberLiveAudioProcessorEditor::resized()
 
     // linha 4: knobs
     auto knobs = r;
-    const int kw = 130;
+    const int kw = 132;
     auto placeKnob = [&] (juce::Slider& s, juce::Label& l)
     {
         auto col = knobs.removeFromLeft (kw);
@@ -198,14 +243,49 @@ void TranscriberLiveAudioProcessorEditor::resized()
     placeKnob (gateSlider, gateLabel);
     placeKnob (vadSlider,  vadLabel);
     placeKnob (holdSlider, holdLabel);
-    knobs.removeFromLeft (10);
+    knobs.removeFromLeft (14);
     partialsButton.setBounds (knobs.removeFromTop (26));
+}
+
+//==============================================================================
+void TranscriberLiveAudioProcessorEditor::setControlsVisible (bool v)
+{
+    for (auto* c : std::initializer_list<juce::Component*> {
+             &nameLabel, &nameEditor, &colourButton, &importanceLabel, &importanceBox, &flashButton,
+             &networkButton, &modelLabel, &modelBox, &meter, &speechLabel,
+             &gateSlider, &vadSlider, &holdSlider, &gateLabel, &vadLabel, &holdLabel,
+             &partialsButton, &lastLineLabel })
+        c->setVisible (v);
+}
+
+void TranscriberLiveAudioProcessorEditor::refreshLicenseUi()
+{
+    const auto info = processor.getLicenseInfo();
+    lastLicensed = info.valid;
+
+    const bool showPanel = licensePanelOpen || ! info.valid;
+    licensePanel.setInfo (info, info.valid);      // só pode fechar se estiver licenciado
+    licensePanel.setVisible (showPanel);
+    setControlsVisible (! showPanel);
+    licenseButton.setVisible (info.valid);       // sem licença o painel já está aberto
+    resized();
+    repaint();
 }
 
 //==============================================================================
 void TranscriberLiveAudioProcessorEditor::timerCallback()
 {
     auto& eng = processor.engine;
+
+    if (processor.isLicensed() != lastLicensed)
+        refreshLicenseUi();
+
+    if (! lastLicensed)
+    {
+        if (statusLabel.getText().isEmpty())
+            statusLabel.setText (utf8 ("Sem licen\xc3\xa7" "a — o \xc3\xa1udio passa intacto, mas nada \xc3\xa9 transcrito."), juce::dontSendNotification);
+        return;
+    }
 
     meter.setLevel (processor.getInputLevelDb(),
                     processor.apvts.getRawParameterValue (TranscriberLiveAudioProcessor::kParamGate)->load(),
@@ -215,14 +295,14 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
     speechLabel.setColour (juce::Label::backgroundColourId, speech ? kText : juce::Colours::transparentBlack);
     speechLabel.setColour (juce::Label::textColourId, speech ? kBg : kDim);
 
-    // status: modelo + VAD + hub
+    // status: modelo + VAD
     juce::String s = eng.getStatus();
     if (eng.isModelLoaded())
         s += processor.hasVadModel() ? "  |  VAD ok" : utf8 ("  |  VAD n\xc3\xa3o encontrado (ggml-silero*.bin)");
     if (eng.isTranscribing()) s += "  |  transcrevendo...";
     if (statusLabel.getText() != s) statusLabel.setText (s, juce::dontSendNotification);
 
-    // última frase reconhecida (só como conferência; o acompanhamento é no Display / celular)
+    // última frase reconhecida (só conferência; o acompanhamento é no Display / celular)
     if (eng.getLinesVersion() != lastLinesVersion)
     {
         lastLinesVersion = eng.getLinesVersion();

@@ -41,7 +41,7 @@ TranscriberLiveAudioProcessor::TranscriberLiveAudioProcessor()
 
     tl::Hub::getModelsDir().createDirectory();
     autoSelectModel();
-    loadModels();
+    refreshLicense();          // só carrega o modelo se houver licença válida
     pushSettingsToEngine();
 
     identity.channelId = juce::Uuid().toString();
@@ -94,6 +94,9 @@ void TranscriberLiveAudioProcessor::autoSelectModel()
 
 void TranscriberLiveAudioProcessor::loadModels()
 {
+    if (! licensed.load())
+        return;
+
     const auto files = tl::Hub::findModelFiles();
 
     modelFile = juce::File();
@@ -117,6 +120,41 @@ void TranscriberLiveAudioProcessor::selectModel (const juce::String& fileName)
     if (fileName == selectedModel) return;
     selectedModel = fileName;
     loadModels();
+}
+
+//==============================================================================
+void TranscriberLiveAudioProcessor::refreshLicense()
+{
+    auto info = tl::License::loadInstalled();
+    {
+        const juce::ScopedLock sl (licenseLock);
+        licenseInfo = info;
+    }
+    licensed.store (info.valid);
+
+    if (info.valid)
+        loadModels();
+    else
+        engine.unloadModels();
+}
+
+tl::LicenseInfo TranscriberLiveAudioProcessor::activateLicense (const juce::String& licenseText)
+{
+    const auto info = tl::License::install (licenseText);
+    if (info.valid)
+        refreshLicense();
+    else
+    {
+        const juce::ScopedLock sl (licenseLock);
+        licenseInfo = info;
+    }
+    return info;
+}
+
+void TranscriberLiveAudioProcessor::removeLicense()
+{
+    tl::License::uninstall();
+    refreshLicense();
 }
 
 //==============================================================================
@@ -144,6 +182,9 @@ tl::Message TranscriberLiveAudioProcessor::makeMessage (const juce::String& type
 
 void TranscriberLiveAudioProcessor::send (const tl::Message& m)
 {
+    if (! licensed.load())
+        return;
+
     localBus.setTarget ("127.0.0.1", hub->getBusPort());
     localBus.send (m);
 
@@ -220,6 +261,12 @@ void TranscriberLiveAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
         return;
 
     // O áudio passa intacto — este plugin só escuta.
+
+    if (! licensed.load())
+    {
+        inputLevelDb.store (-100.0f);
+        return;
+    }
 
     pushSettingsToEngine();
 

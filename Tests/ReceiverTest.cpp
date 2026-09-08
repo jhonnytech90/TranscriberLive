@@ -16,11 +16,11 @@ public:
     {
         auto args = juce::StringArray::fromTokens (cmd, true);
         args.removeEmptyStrings();
-        if (args.isEmpty()) { std::printf ("uso: ReceiverTest audio.wav [idioma] [nome]\n"); quit(); return; }
+        if (args.isEmpty()) { std::printf ("uso: ReceiverTest audio.wav [idioma] [nome]\n"); std::fflush (stdout); quit(); return; }
 
         juce::AudioFormatManager fm; fm.registerBasicFormats();
         std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (juce::File::getCurrentWorkingDirectory().getChildFile (args[0].unquoted())));
-        if (reader == nullptr) { std::printf ("nao abriu o wav\n"); quit(); return; }
+        if (reader == nullptr) { std::printf ("nao abriu o wav: %s\n", args[0].toRawUTF8()); std::fflush (stdout); quit(); return; }
         sampleRate = reader->sampleRate;
         wav.setSize ((int) reader->numChannels, (int) reader->lengthInSamples);
         reader->read (&wav, 0, (int) reader->lengthInSamples, 0, true, true);
@@ -29,8 +29,12 @@ public:
         if (args.size() > 1) { auto s = proc->engine.getSettings(); s.language = args[1]; proc->engine.setSettings (s); }
         if (args.size() > 2) { auto id = proc->getIdentity(); id.name = args[2].unquoted(); id.importance = 2; proc->setIdentity (id); }
 
-        std::printf ("modelo: %s | hub UDP %s | web %s\n", proc->getSelectedModel().toRawUTF8(),
-                     proc->hub->isBusPrimary() ? "ok" : "NAO", proc->hub->isWebPrimary() ? "ok" : "NAO");
+        std::printf ("licenca: %s | modelo: %s | hub UDP %s | web %s\n",
+                     proc->isLicensed() ? "OK" : "AUSENTE",
+                     proc->getSelectedModel().toRawUTF8(),
+                     proc->hub->isBusPrimary() ? "ok" : "NAO",
+                     proc->hub->isWebPrimary() ? "ok" : "NAO");
+        std::fflush (stdout);
 
         struct W : juce::DocumentWindow { using DocumentWindow::DocumentWindow; void closeButtonPressed() override { JUCEApplication::getInstance()->systemRequestedQuit(); } };
         window = std::make_unique<W> ("Transcriber Live Receiver", juce::Colour (0xff0e1114), juce::DocumentWindow::allButtons);
@@ -47,6 +51,7 @@ public:
     void shutdown() override
     {
         stopTimer();
+        if (proc == nullptr) { window.reset(); return; }
         std::printf ("\nFRASES (engine):\n");
         for (auto& l : proc->engine.getLines()) std::printf ("  %s\n", l.text.toRawUTF8());
         std::printf ("STORE do hub: %d entradas\n", (int) proc->hub->store.getEntries().size());

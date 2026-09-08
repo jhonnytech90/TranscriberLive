@@ -4,6 +4,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "DisplayProcessor.h"
 #include "Common/DarkLookAndFeel.h"
+#include "Common/Branding.h"
 
 //==============================================================================
 /** Conversa em balões. */
@@ -75,8 +76,9 @@ private:
 
     DisplayAudioProcessor& processor;
     tl::DarkLookAndFeel lnf;
+    tl::LogoBadge lnfLogo;
 
-    juce::Label        titleLabel, statusLabel;
+    juce::Label        statusLabel;
     juce::ToggleButton flashButton { "Flash" };
     juce::TextButton   clearButton { "Limpar tudo" }, fontDownButton { "A-" }, fontUpButton { "A+" },
                        settingsButton { "Rede..." };

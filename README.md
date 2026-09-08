@@ -30,13 +30,14 @@ Display estiver aberto na mesma máquina, ele assume e o host espelha o estado d
 4. [Compilar pelo GitHub Actions (sem instalar nada)](#4-compilar-pelo-github-actions-sem-instalar-nada)
 5. [Instalar os plugins](#5-instalar-os-plugins)
 6. [Baixar os modelos (obrigatório)](#6-baixar-os-modelos-obrigatório)
-7. [Usar no show](#7-usar-no-show)
-8. [Celular / tablet](#8-celular--tablet)
-9. [Rede e portas](#9-rede-e-portas)
-10. [Parâmetros automatizáveis](#10-parâmetros-automatizáveis-receiver)
-11. [Solução de problemas](#11-solução-de-problemas)
-12. [Como funciona por dentro](#12-como-funciona-por-dentro)
-13. [Estrutura do código](#13-estrutura-do-código)
+7. [Licença e ativação](#7-licença-e-ativação)
+8. [Usar no show](#8-usar-no-show)
+9. [Celular / tablet](#9-celular--tablet)
+10. [Rede e portas](#10-rede-e-portas)
+11. [Parâmetros automatizáveis](#11-parâmetros-automatizáveis-receiver)
+12. [Solução de problemas](#12-solução-de-problemas)
+13. [Como funciona por dentro](#13-como-funciona-por-dentro)
+14. [Estrutura do código](#14-estrutura-do-código)
 
 ---
 
@@ -64,6 +65,10 @@ cmake -B build -DJUCE_DIR=/caminho/JUCE -DWHISPER_DIR=/caminho/whisper.cpp
 ### Modelos de IA (para rodar, não para compilar)
 
 Ver a [seção 6](#6-baixar-os-modelos-obrigatório) — dois arquivos `.bin`, ~470 MB no total.
+
+### Licença
+
+O Receiver precisa de uma chave de ativação (seção 7). O Display é livre.
 
 ---
 
@@ -236,12 +241,45 @@ Invoke-WebRequest https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml
 
 ---
 
-## 7. Usar no show
+## 7. Licença e ativação
+
+O **Receiver** precisa de licença para transcrever; o **Display** e a página do celular são
+livres. A verificação é **offline** — nada de internet durante o show.
+
+Ao abrir sem licença, o Receiver mostra o painel **LICENÇA** com o **ID desta máquina**
+(ex.: `TL-1147-89DF-849C`) e um botão **Copiar**. Mande esse ID, seu nome e seu e-mail para
+quem vendeu; você recebe um texto assim:
+
+```
+-----TRANSCRIBER LIVE LICENSE-----
+eyJlbWFpbCI6ImpvYW9AZXhlbXBsby5jb20iLCJpYXQiOiIyMDI2LTA5LTA4Iiw...
+...
+-----FIM DA LICENCA-----
+```
+
+Cole o texto inteiro (todas as linhas) no campo do painel e clique **Ativar**. Feito uma vez,
+vale para todos os hosts e todas as instâncias daquele computador. A licença fica em
+`~/Library/Application Support/TranscriberLive/license.key` (macOS) ou
+`%APPDATA%\TranscriberLive\license.key` (Windows).
+
+Detalhes:
+
+- Uma licença vale para **um computador**. Trocou de máquina? Mande o ID novo.
+- Sem licença o **áudio passa intacto** — o plugin nunca deixa o canal mudo, só não transcreve.
+- **Remover licença** (no painel) libera o arquivo, útil antes de vender/formatar a máquina.
+- Licenças de aluguel (por período) mostram a data de validade no painel.
+
+*Para quem emite as licenças:* veja `Ferramentas/COMO-EMITIR-LICENCAS.md`.
+
+---
+
+## 8. Usar no show
 
 ### Receiver (um por canal de mic)
 
-1. Insira **Transcriber Live Receiver** no canal do microfone. O host já entrega o sinal do
-   canal — não há seleção de entrada no plugin (se vier estéreo, ele soma).
+1. Insira **Transcriber Live Receiver** no canal do microfone. Na primeira vez, ative a
+   licença (seção 7). O host já entrega o sinal do canal — não há seleção de entrada no
+   plugin (se vier estéreo, ele soma).
 2. **Nome** (ex.: Cantor, Baixo), **Cor** (clique no botão), **Importância**
    (Normal / Importante / Urgente — muda o destaque do balão e a intensidade do flash),
    **Flash** (liga/desliga o piscar da tela do Display quando este canal fala).
@@ -281,7 +319,7 @@ controlado por snapshot/MIDI.
 
 ---
 
-## 8. Celular / tablet
+## 9. Celular / tablet
 
 No mesmo Wi-Fi do computador do Display, abra no navegador o endereço que aparece na linha
 de status do Display, por exemplo `http://192.168.0.20:47801`. A página mostra a mesma
@@ -291,7 +329,7 @@ tela cheia.
 
 ---
 
-## 9. Rede e portas
+## 10. Rede e portas
 
 | Porta | Protocolo | Quem usa |
 |---|---|---|
@@ -309,7 +347,7 @@ Firewall no macOS: Ajustes → Rede → Firewall → Opções → permitir o hos
 
 ---
 
-## 10. Parâmetros automatizáveis (Receiver)
+## 11. Parâmetros automatizáveis (Receiver)
 
 | ID | Nome | Faixa | Padrão |
 |---|---|---|---|
@@ -323,7 +361,7 @@ snapshot do host), não são parâmetros automatizáveis.
 
 ---
 
-## 11. Solução de problemas
+## 12. Solução de problemas
 
 | Sintoma | O que fazer |
 |---|---|
@@ -333,6 +371,8 @@ snapshot do host), não são parâmetros automatizáveis.
 | Configuração trava baixando JUCE/whisper | Internet/proxy. Clone os dois à mão e use `-DJUCE_DIR=... -DWHISPER_DIR=...`. |
 | Erro de permissão ao copiar o `.vst3` (Windows) | Rode o prompt como Administrador, ou `-DTRANSCRIBER_COPY_PLUGIN=OFF` e copie à mão. |
 | O plugin não aparece no host | Re-escaneie; confira a pasta de instalação; no macOS remova a quarentena (`xattr -dr com.apple.quarantine ...`). SuperRack: precisa ser **Performer V14+**. |
+| Painel LICENÇA aparece e não sai | O Receiver precisa de licença para transcrever. Copie o **ID desta máquina** e peça sua chave (seção 7). |
+| "Esta licença foi emitida para outro computador" | A chave é presa à máquina. Mande o ID novo para receber outra. |
 | "Nenhum modelo carregado" / lista Modelo vazia | Coloque os `.bin` na pasta de modelos (seção 6). A lista atualiza sozinha em 5 s. |
 | O host ou o app fechava sozinho quando o celular desconectava (v0.2) | Corrigido na v0.3: os sockets agora ignoram `SIGPIPE` (o macOS matava o processo ao escrever num socket fechado). |
 | Transcreve com atraso grande / o host engasga | Modelo grande demais para a CPU. Use `small` ou `small-q5_1`. Desligue "Mostrar parciais". |
@@ -343,7 +383,7 @@ snapshot do host), não são parâmetros automatizáveis.
 
 ---
 
-## 12. Como funciona por dentro
+## 13. Como funciona por dentro
 
 ```
 host (SuperRack Performer / REAPER / Live Professor)  →  canal do mic
@@ -369,7 +409,7 @@ host (SuperRack Performer / REAPER / Live Professor)  →  canal do mic
 
 ---
 
-## 13. Estrutura do código
+## 14. Estrutura do código
 
 ```
 CMakeLists.txt                     dois targets: TranscriberLive (Receiver) e TranscriberLiveDisplay
@@ -381,6 +421,9 @@ Source/Common/
   MessageStore.h                   participantes + histórico (Display)
   HttpServer.h                     servidor web embutido (/, /state, /events SSE, /clear)
   Hub.*                            singleton por processo: store + UDP + web; primário/espelho
+  License.*                        licenciamento offline (RSA + ID de máquina)
+  LicenseComponent.h               painel de ativação
+  Branding.h                       logo do cabeçalho
   SocketSafety.h                   proteção SIGPIPE (SO_NOSIGPIPE / SIG_IGN)
   DarkLookAndFeel.h                tema escuro neutro dos dois plugins
 Source/Receiver/                   processor (medidor, reamostragem, identidade) + editor
@@ -389,6 +432,10 @@ Resources/display.html             página para celular/tablet (embutida no bin�
 Resources/icon.svg / icon_*.png    ícone
 Tests/EngineTest.cpp               teste de console do motor: EngineTest modelo vad audio.wav [gateDb] [idioma] [nomeCanal]
 Tests/ReceiverTest.cpp             app de teste do Receiver inteiro (processor + hub + editor): ReceiverTest audio.wav [idioma] [nome]
+Tests/LicenseTest.cpp              mostra o ID da máquina e verifica/instala uma licença
+Ferramentas/licenca.py             gerador de licenças (uso do desenvolvedor)
+Ferramentas/COMO-EMITIR-LICENCAS.md  guia comercial/operacional do licenciamento
+Resources/brand/                   kit do logo (SVG, ICO, ICNS)
 ```
 
 Teste de console (opcional): `cmake -B build -DTRANSCRIBER_BUILD_TESTS=ON` e

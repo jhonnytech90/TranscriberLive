@@ -59,6 +59,9 @@ public:
     /** Pede o carregamento do modelo Silero VAD (ggml-silero-v5.1.2.bin). Opcional. */
     void loadVadModel (const juce::File& vadFile);
 
+    /** Descarrega tudo (usado quando não há licença válida). */
+    void unloadModels();
+
     bool isModelLoaded() const noexcept   { return modelLoaded.load(); }
     bool isVadLoaded()   const noexcept   { return vadLoaded.load(); }
     juce::String getStatus() const;
@@ -98,7 +101,7 @@ private:
     whisper_vad_context* vctx = nullptr;
     std::atomic<bool> modelLoaded { false }, vadLoaded { false };
     juce::File pendingModel, pendingVad;
-    std::atomic<bool> hasPendingModel { false }, hasPendingVad { false };
+    std::atomic<bool> hasPendingModel { false }, hasPendingVad { false }, hasPendingUnload { false };
     mutable juce::CriticalSection statusLock;
     juce::String status { "Nenhum modelo carregado" };
 

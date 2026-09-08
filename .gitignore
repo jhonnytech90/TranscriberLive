@@ -6,3 +6,6 @@ models/
 .vs/
 .idea/
 *.user
+*private.key
+transcriberlive-private*
+licenca-*.txt

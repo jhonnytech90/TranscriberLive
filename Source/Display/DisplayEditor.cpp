@@ -196,8 +196,8 @@ DisplayAudioProcessorEditor::DisplayAudioProcessorEditor (DisplayAudioProcessor&
         l.setColour (juce::Label::textColourId, c);
         addAndMakeVisible (l);
     };
-    initLabel (titleLabel,  "TRANSCRIBER LIVE  -  DISPLAY", 16.0f, kAccent);
     initLabel (statusLabel, "", 13.0f, kDim);
+    addAndMakeVisible (lnfLogo);
 
     flashButton.setToggleState (processor.flashEnabled, juce::dontSendNotification);
     flashButton.onClick = [this] { processor.flashEnabled = flashButton.getToggleState(); };
@@ -242,8 +242,13 @@ void DisplayAudioProcessorEditor::resized()
 {
     auto r = getLocalBounds();
     auto top = r.removeFromTop (56).reduced (10, 6);
+
+    // logo no canto direito (ocupa a altura das duas linhas do cabeçalho)
+    auto logoArea = top.removeFromRight (tl::LogoBadge::widthForHeight (38));
+    lnfLogo.setBounds (logoArea.withSizeKeepingCentre (logoArea.getWidth(), 38));
+    top.removeFromRight (16);
+
     auto row1 = top.removeFromTop (26);
-    titleLabel.setBounds (row1.removeFromLeft (260));
     flashButton.setBounds (row1.removeFromLeft (80));
     fontUpButton.setBounds (row1.removeFromRight (40));
     fontDownButton.setBounds (row1.removeFromRight (40));

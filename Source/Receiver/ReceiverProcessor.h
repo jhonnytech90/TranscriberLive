@@ -5,6 +5,7 @@
 #include "Common/TranscriptionEngine.h"
 #include "Common/MessageBus.h"
 #include "Common/Hub.h"
+#include "Common/License.h"
 
 //==============================================================================
 /**
@@ -50,6 +51,12 @@ public:
 
     float getInputLevelDb() const noexcept   { return inputLevelDb.load(); }
 
+    //-- Licença (sem chave válida o plugin não transcreve; o áudio passa intacto) --
+    bool            isLicensed() const noexcept   { return licensed.load(); }
+    tl::LicenseInfo getLicenseInfo() const        { const juce::ScopedLock sl (licenseLock); return licenseInfo; }
+    tl::LicenseInfo activateLicense (const juce::String& licenseText);
+    void            removeLicense();
+
     //-- Modelos (pasta padrão: <dados do usuário>/TranscriberLive/models) ---------
     juce::StringArray getAvailableModels() const;        // nomes de arquivo ggml-*.bin (sem o VAD)
     juce::String      getSelectedModel() const           { return selectedModel; }
@@ -86,6 +93,11 @@ private:
     tl::Message makeMessage (const juce::String& type) const;
     void autoSelectModel();
     void loadModels();
+    void refreshLicense();
+
+    std::atomic<bool> licensed { false };
+    mutable juce::CriticalSection licenseLock;
+    tl::LicenseInfo licenseInfo;
 
     std::atomic<float>* gateParam     = nullptr;
     std::atomic<float>* holdParam     = nullptr;
