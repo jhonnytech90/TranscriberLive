@@ -58,19 +58,24 @@ TranscriberLiveAudioProcessor::~TranscriberLiveAudioProcessor()
 }
 
 //==============================================================================
+static bool isVadModelName (const juce::String& n)
+{
+    return n.containsIgnoreCase ("silero") || n.containsIgnoreCase ("vad");
+}
+
 juce::StringArray TranscriberLiveAudioProcessor::getAvailableModels() const
 {
     juce::StringArray out;
-    for (auto& f : tl::Hub::getModelsDir().findChildFiles (juce::File::findFiles, false, "ggml-*.bin"))
-        if (! f.getFileName().containsIgnoreCase ("silero") && ! f.getFileName().containsIgnoreCase ("vad"))
-            out.add (f.getFileName());
+    for (auto& kv : tl::Hub::findModelFiles())
+        if (! isVadModelName (kv.first))
+            out.add (kv.first);
     out.sort (true);
     return out;
 }
 
 void TranscriberLiveAudioProcessor::autoSelectModel()
 {
-    if (selectedModel.isNotEmpty() && tl::Hub::getModelsDir().getChildFile (selectedModel).existsAsFile())
+    if (selectedModel.isNotEmpty() && tl::Hub::findModelFiles().count (selectedModel) > 0)
         return;
 
     const auto models = getAvailableModels();
@@ -89,17 +94,19 @@ void TranscriberLiveAudioProcessor::autoSelectModel()
 
 void TranscriberLiveAudioProcessor::loadModels()
 {
-    const auto dir = tl::Hub::getModelsDir();
+    const auto files = tl::Hub::findModelFiles();
 
-    modelFile = selectedModel.isNotEmpty() ? dir.getChildFile (selectedModel) : juce::File();
+    modelFile = juce::File();
+    if (selectedModel.isNotEmpty())
+        if (auto it = files.find (selectedModel); it != files.end())
+            modelFile = it->second;
     if (modelFile.existsAsFile())
         engine.loadModel (modelFile);
 
-    // VAD: automático, sem escolha do usuário (qualquer ggml-silero*.bin / *vad*.bin na pasta)
+    // VAD: automático, sem escolha do usuário (qualquer ggml-silero*.bin / *vad*.bin nas pastas)
     vadFile = juce::File();
-    for (auto& f : dir.findChildFiles (juce::File::findFiles, false, "ggml-*.bin"))
-        if (f.getFileName().containsIgnoreCase ("silero") || f.getFileName().containsIgnoreCase ("vad"))
-        { vadFile = f; break; }
+    for (auto& kv : files)
+        if (isVadModelName (kv.first)) { vadFile = kv.second; break; }
 
     if (vadFile.existsAsFile())
         engine.loadVadModel (vadFile);
@@ -299,7 +306,7 @@ void TranscriberLiveAudioProcessor::setStateInformation (const void* data, int s
             apvts.replaceState (state);
 
             const auto model = state.getProperty ("model", "").toString();
-            if (model.isNotEmpty() && model != selectedModel && tl::Hub::getModelsDir().getChildFile (model).existsAsFile())
+            if (model.isNotEmpty() && model != selectedModel && tl::Hub::findModelFiles().count (model) > 0)
                 selectModel (model);
 
             auto id = getIdentity();

@@ -5,6 +5,7 @@
 #include "MessageStore.h"
 #include "MessageBus.h"
 #include "HttpServer.h"
+#include <map>
 
 namespace tl
 {
@@ -92,11 +93,42 @@ namespace tl
         }
 
         //-- pasta de dados / modelos ------------------------------------------------
+        /** macOS: ~/Library/Application Support/TranscriberLive   Windows: %APPDATA%\TranscriberLive */
         static juce::File getDataDir()
         {
-            return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("TranscriberLive");
+            auto base = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
+           #if JUCE_MAC
+            base = base.getChildFile ("Application Support");   // no macOS o JUCE devolve só ~/Library
+           #endif
+            return base.getChildFile ("TranscriberLive");
         }
         static juce::File getModelsDir() { return getDataDir().getChildFile ("models"); }
+
+        /** Todas as pastas onde procuramos modelos (a principal + caminhos antigos/alternativos). */
+        static juce::Array<juce::File> getModelSearchDirs()
+        {
+            juce::Array<juce::File> dirs;
+            dirs.add (getModelsDir());
+            dirs.addIfNotAlreadyThere (juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("TranscriberLive").getChildFile ("models"));
+            dirs.addIfNotAlreadyThere (juce::File::getSpecialLocation (juce::File::commonApplicationDataDirectory).getChildFile ("TranscriberLive").getChildFile ("models"));
+           #if JUCE_MAC
+            dirs.addIfNotAlreadyThere (juce::File ("/Library/Application Support/TranscriberLive/models"));
+           #endif
+            dirs.addIfNotAlreadyThere (juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("TranscriberLive").getChildFile ("models"));
+            return dirs;
+        }
+
+        /** Arquivos ggml-*.bin de todas as pastas (nome -> arquivo; a primeira pasta ganha em caso de duplicata). */
+        static std::map<juce::String, juce::File> findModelFiles()
+        {
+            std::map<juce::String, juce::File> out;
+            for (auto& d : getModelSearchDirs())
+                if (d.isDirectory())
+                    for (auto& f : d.findChildFiles (juce::File::findFiles, false, "ggml-*.bin"))
+                        if (out.find (f.getFileName()) == out.end())
+                            out[f.getFileName()] = f;
+            return out;
+        }
 
     private:
         static const char* pageHtml();

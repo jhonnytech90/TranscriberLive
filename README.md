@@ -201,10 +201,12 @@ vários e trocar na hora). Sem escolher pasta, sem diálogo de arquivo.
 
 | Sistema | Pasta |
 |---|---|
-| macOS | `~/Library/Application Support/TranscriberLive/models/` |
+| macOS | `~/Library/Application Support/TranscriberLive/models/` (no Finder: ⌘⇧G e cole o caminho) |
 | Windows | `%APPDATA%\TranscriberLive\models\` (= `C:\Users\SEU-NOME\AppData\Roaming\TranscriberLive\models\`) |
 
-(Crie a pasta se não existir. Só arquivos que começam com `ggml-` são reconhecidos.)
+(Crie a pasta se não existir. Só arquivos que começam com `ggml-` são reconhecidos. Também são
+lidas, por compatibilidade: `~/Library/TranscriberLive/models`, `/Library/Application Support/TranscriberLive/models`
+e `~/Documents/TranscriberLive/models`; no Windows, `%PROGRAMDATA%\TranscriberLive\models` e `Documentos\TranscriberLive\models`.)
 
 | Arquivo | Tamanho | Para quê | Link direto |
 |---|---|---|---|

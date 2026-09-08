@@ -249,7 +249,7 @@ void TranscriberLiveAudioProcessorEditor::refreshModelList()
         modelBox.clear (juce::dontSendNotification);
         if (models.isEmpty())
         {
-            modelBox.setTextWhenNothingSelected (utf8 ("nenhum modelo em ") + tl::Hub::getModelsDir().getFullPathName());
+            modelBox.setTextWhenNothingSelected (utf8 ("nenhum ggml-*.bin em ") + tl::Hub::getModelsDir().getFullPathName());
         }
         else
         {
