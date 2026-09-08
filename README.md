@@ -165,7 +165,7 @@ O repositório tem um workflow em `.github/workflows/build.yml`. Cada `git push`
 1. Faça o push (ou vá em **Actions → Build plugin → Run workflow**).
 2. Espere ~15–25 minutos.
 3. Em **Actions**, abra a execução e baixe os artefatos `TranscriberLive-macOS` e
-   `TranscriberLive-Windows` (zips com VST3/AU/Standalone).
+   `TranscriberLive-Windows` (zips com VST3/AU/app).
 4. Instale conforme a seção 5.
 
 Funciona em repositório privado dentro da cota gratuita do GitHub (2.000 min/mês; o build
