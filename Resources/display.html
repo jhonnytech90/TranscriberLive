@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Transcriber Live</title>
+<style>
+  :root { --bg:#0e1114; --panel:#161a1f; --side:#121519; --text:#e8ebee; --dim:#8a95a3; --accent:#e8ebee; --urgent:#ff5252; --font: 24px; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font-family: -apple-system, system-ui, Roboto, Helvetica, Arial, sans-serif; overflow:hidden; }
+  #app { display:flex; flex-direction:column; height:100%; }
+  header { display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--panel); flex:0 0 auto; }
+  header h1 { font-size:14px; letter-spacing:1px; color:var(--accent); margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  header button { background:#1f252c; color:var(--text); border:1px solid #2b333c; border-radius:8px; padding:8px 12px; font-size:14px; }
+  header button.on { border-color:#8a95a3; background:#3a4450; }
+  #status { font-size:11px; color:var(--dim); padding:0 10px 4px; background:var(--panel); }
+  #main { display:flex; flex:1; min-height:0; }
+  #side { width:190px; background:var(--side); overflow-y:auto; flex:0 0 auto; padding:6px 0; }
+  #side .row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; margin:0 6px; cursor:pointer; }
+  #side .row.sel { background:#3a4450; }
+  #side .dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:#e8ebee !important; }
+  #side .row.off .dot { opacity:.35; } #side .row.off .name { color:var(--dim); }
+  #side .name { font-weight:600; font-size:15px; } #side .sub { font-size:11px; color:var(--dim); }
+  #chat { flex:1; overflow-y:auto; padding:10px 12px; -webkit-overflow-scrolling: touch; }
+  .msg { position:relative; border-radius:12px; padding:8px 14px 10px 14px; margin-bottom:10px; background:var(--c); color:var(--on); }
+  .msg.partial { opacity:.6; }
+  .msg .head { display:flex; justify-content:space-between; font-size:13px; font-weight:700; opacity:.85; margin-bottom:4px; }
+  .msg .head .t { font-weight:400; opacity:.75; }
+  .msg .text { font-size:var(--font); line-height:1.25; word-wrap:break-word; }
+  .msg.partial .text { font-style:italic; }
+  .msg.imp2 .text { font-weight:700; }
+  .msg.imp3 { outline:2px solid var(--urgent); } .msg.imp3 .text { font-weight:700; font-size:calc(var(--font) + 4px); }
+  #flash { position:fixed; inset:0; pointer-events:none; opacity:0; background:#fff; }
+  #empty { color:var(--dim); text-align:center; padding:40px 20px; font-size:16px; }
+  @media (max-width:600px) { #side { width:120px; } #side .sub { display:none; } .msg .head { font-size:12px; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>TRANSCRIBER LIVE</h1>
+    <button id="btnFlash" class="on">Flash</button>
+    <button id="btnMinus">A-</button>
+    <button id="btnPlus">A+</button>
+    <button id="btnClear">Limpar</button>
+  </header>
+  <div id="status">conectando...</div>
+  <div id="main">
+    <div id="side"></div>
+    <div id="chat"><div id="empty">Aguardando mensagens...</div></div>
+  </div>
+</div>
+<div id="flash"></div>
+<script>
+(function () {
+  var entries = {}, order = [], participants = [], selected = '', flashOn = true, fontPx = 24, pulses = 0, pulseTimer = null;
+  var chat = document.getElementById('chat'), side = document.getElementById('side'), status = document.getElementById('status'), flashEl = document.getElementById('flash');
+
+  try { fontPx = parseInt(localStorage.getItem('tl.font')) || 24; flashOn = localStorage.getItem('tl.flash') !== '0'; } catch (e) {}
+  applyFont();
+  document.getElementById('btnFlash').className = flashOn ? 'on' : '';
+
+  function applyFont () { document.documentElement.style.setProperty('--font', fontPx + 'px'); try { localStorage.setItem('tl.font', fontPx); } catch (e) {} }
+  function esc (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function timeStr (t) { var d = new Date(t); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2); }
+
+  function key (m) { return m.ch + '|' + m.utt; }
+  function textOn (hex) { var n = parseInt(hex, 16); if (isNaN(n)) return '#fff'; var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255; return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55 ? '#0e1114' : '#ffffff'; }
+  function addEntry (m) {
+    var k = key(m), isNew = !entries[k];
+    entries[k] = m; if (isNew) order.push(k);
+    renderChat();
+  }
+
+  function renderChat () {
+    var atBottom = chat.scrollTop + chat.clientHeight >= chat.scrollHeight - 60;
+    var html = '';
+    order.forEach(function (k) {
+      var m = entries[k];
+      if (selected && m.ch !== selected) return;
+      var cls = 'msg imp' + m.imp + (m.final ? '' : ' partial');
+      var head = esc(m.name) + (m.imp === 2 ? '  !' : m.imp === 3 ? '  !!  URGENTE' : '');
+      html += '<div class="' + cls + '" style="--c:#' + esc(m.color) + ';--on:' + textOn(m.color) + '"><div class="head"><span>' + head + '</span><span class="t">' + timeStr(m.t) + (m.final ? '' : ' ...') + '</span></div><div class="text">' + esc(m.text) + '</div></div>';
+    });
+    chat.innerHTML = html || '<div id="empty">Aguardando mensagens...</div>';
+    if (atBottom) chat.scrollTop = chat.scrollHeight;
+  }
+
+  function renderSide () {
+    var html = '<div class="row' + (selected ? '' : ' sel') + '" data-ch=""><div class="dot" style="background:#f4f6f8"></div><div><div class="name">Todos</div><div class="sub">' + participants.length + ' canais</div></div></div>';
+    participants.forEach(function (p) {
+      var sub = p.count + ' msg' + (p.imp === 3 ? ' · urgente' : p.imp === 2 ? ' · importante' : '') + (p.online ? '' : ' · offline');
+      html += '<div class="row' + (selected === p.ch ? ' sel' : '') + (p.online ? '' : ' off') + '" data-ch="' + esc(p.ch) + '"><div class="dot" style="background:#' + esc(p.color) + '"></div><div><div class="name">' + esc(p.name) + '</div><div class="sub">' + sub + '</div></div></div>';
+    });
+    side.innerHTML = html;
+  }
+  side.addEventListener('click', function (e) {
+    var row = e.target.closest('.row'); if (!row) return;
+    selected = row.getAttribute('data-ch') || ''; renderSide(); renderChat(); chat.scrollTop = chat.scrollHeight;
+  });
+
+  function doFlash (color, imp) {
+    if (!flashOn) return;
+    flashEl.style.background = '#' + color;
+    pulses = imp === 3 ? 3 : imp === 2 ? 2 : 1;
+    if (pulseTimer) clearInterval(pulseTimer);
+    var a = 0.8;
+    flashEl.style.opacity = a;
+    pulseTimer = setInterval(function () {
+      a -= imp === 3 ? 0.09 : 0.06;
+      if (a <= 0) { pulses--; if (pulses <= 0) { clearInterval(pulseTimer); pulseTimer = null; a = 0; } else a = 0.7; }
+      flashEl.style.opacity = a;
+    }, 33);
+  }
+
+  document.getElementById('btnFlash').onclick = function () { flashOn = !flashOn; this.className = flashOn ? 'on' : ''; try { localStorage.setItem('tl.flash', flashOn ? '1' : '0'); } catch (e) {} };
+  document.getElementById('btnMinus').onclick = function () { fontPx = Math.max(14, fontPx - 3); applyFont(); };
+  document.getElementById('btnPlus').onclick = function () { fontPx = Math.min(72, fontPx + 3); applyFont(); };
+  document.getElementById('btnClear').onclick = function () { fetch('/clear', { method: 'POST' }); };
+
+  function clearAll () { entries = {}; order = []; renderChat(); }
+
+  function connect () {
+    fetch('/state').then(function (r) { return r.json(); }).then(function (s) {
+      entries = {}; order = [];
+      (s.entries || []).forEach(function (m) { entries[key(m)] = m; order.push(key(m)); });
+      participants = s.participants || [];
+      renderSide(); renderChat(); chat.scrollTop = chat.scrollHeight;
+
+      var es = new EventSource('/events');
+      es.onopen = function () { status.textContent = 'conectado ao Display'; };
+      es.onmessage = function (ev) {
+        var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+        if (m.type === 'msg') addEntry(m);
+        else if (m.type === 'clear') clearAll();
+        else if (m.type === 'flash') doFlash(m.color, m.imp);
+        else if (m.type === 'participants') { participants = m.list || []; renderSide(); }
+      };
+      es.onerror = function () { status.textContent = 'reconectando...'; es.close(); setTimeout(connect, 2000); };
+    }).catch(function () { status.textContent = 'sem conexão — tentando de novo...'; setTimeout(connect, 2000); });
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

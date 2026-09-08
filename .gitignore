@@ -1,0 +1,8 @@
+build/
+models/
+*.bin
+*.wav
+.DS_Store
+.vs/
+.idea/
+*.user

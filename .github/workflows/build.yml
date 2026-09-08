@@ -1,0 +1,40 @@
+name: Build plugin
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macOS
+            targets: TranscriberLive_VST3 TranscriberLive_AU TranscriberLive_Standalone TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_AU TranscriberLiveDisplay_Standalone
+            artefacts: build/TranscriberLive_artefacts/Release
+          - os: windows-2022
+            name: Windows
+            targets: TranscriberLive_VST3 TranscriberLive_Standalone TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_Standalone
+            artefacts: build/TranscriberLive_artefacts/Release
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRANSCRIBER_COPY_PLUGIN=OFF ${{ matrix.os == 'windows-2022' && '-G "Visual Studio 17 2022" -A x64' || '-G Xcode' }}
+
+      - name: Build
+        run: cmake --build build --config Release --target ${{ matrix.targets }} --parallel 4
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: TranscriberLive-${{ matrix.name }}
+          path: |
+            build/TranscriberLive_artefacts/Release
+            build/TranscriberLiveDisplay_artefacts/Release
