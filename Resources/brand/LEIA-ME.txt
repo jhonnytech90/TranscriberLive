@@ -1,0 +1,28 @@
+TRANSCRIBER LIVE — kit de logo
+================================
+
+svg/   vetores (edite/escale à vontade — Illustrator, Figma, Affinity, navegador)
+png/   rasterizados, fundo transparente (exceto o ícone de app e o logo "fundo-escuro")
+ico/   ícone Windows (16/32/64/128/256)
+icns/  ícone macOS
+favicon-16.png, favicon-32.png
+
+Variações
+---------
+icone-app-colorido           ícone completo (squircle escuro) — app, plugin, dock, loja
+glifo-colorido-fundo-escuro  só o símbolo, balão branco + onda verde/azul — usar sobre fundos escuros
+glifo-colorido-fundo-claro   só o símbolo, balão grafite + onda — usar sobre fundos claros
+glifo-branco                 monocromático branco (onda vazada) — impressão 1 cor, fundos escuros, overlays
+glifo-preto                  monocromático preto (onda vazada) — impressão 1 cor, fundos claros, carimbo
+marca-dagua-branca / -preta  símbolo a 18% de opacidade — marca d'água em telas, vídeos, PDFs
+logo-horizontal-*            símbolo + nome "TRANSCRIBER LIVE": colorido (fundo escuro / claro /
+                             transparente), branco e preto
+
+Cores
+-----
+grafite     #0E1114  (fundo)        branco  #F4F6F8
+verde       #3DDC84  (onda, início) azul    #4FC3F7 (onda, fim)
+cinza texto #8A95A3
+
+Tamanhos: png/<nome>_<pixels>.png. Para a onda no glifo mono, a "cor" da onda é o próprio
+fundo (área vazada), então funciona em qualquer cor de fundo.
