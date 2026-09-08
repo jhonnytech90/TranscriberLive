@@ -205,7 +205,7 @@ DisplayAudioProcessorEditor::DisplayAudioProcessorEditor (DisplayAudioProcessor&
 
     for (auto* b : { &clearButton, &fontDownButton, &fontUpButton, &settingsButton })
         addAndMakeVisible (b);
-    clearButton.onClick    = [this] { processor.store.clear(); };
+    clearButton.onClick    = [this] { processor.hub->clearEverywhere(); };
     fontDownButton.onClick = [this] { processor.fontSize = juce::jmax (14, processor.fontSize - 3); };
     fontUpButton.onClick   = [this] { processor.fontSize = juce::jmin (72, processor.fontSize + 3); };
     settingsButton.onClick = [this] { showSettings(); };
@@ -269,7 +269,7 @@ void DisplayAudioProcessorEditor::timerCallback()
 {
     flash.tick();
 
-    auto& store = processor.store;
+    auto& store = processor.store();
     const int v = store.getVersion();
     const auto now = juce::Time::getMillisecondCounter();
 
@@ -290,27 +290,22 @@ void DisplayAudioProcessorEditor::timerCallback()
     }
 
     // status
-    juce::String s = processor.isBusListening() ? "UDP " + juce::String (processor.getBusPort()) + " ok"
-                                                : "UDP " + juce::String (processor.getBusPort()) + " FALHOU (porta em uso?)";
-    if (processor.isWebEnabled())
-    {
-        if (processor.isWebRunning())
-        {
-            auto ips = tl::HttpServer::getLocalAddresses();
-            s += "   |   Celular/tablet: ";
-            if (ips.isEmpty()) s += "sem rede";
-            for (int i = 0; i < juce::jmin (2, ips.size()); ++i)
-                s += (i ? "  ou  " : "") + juce::String ("http://") + ips[i] + ":" + juce::String (processor.getHttpPort());
-            s += "   (" + juce::String (processor.getWebClients()) + " conectados)";
-        }
-        else s += "   |   Web FALHOU na porta " + juce::String (processor.getHttpPort());
-    }
+    auto& hub = *processor.hub;
+    juce::String s;
+    if (hub.isBusPrimary())      s = "UDP " + juce::String (hub.getBusPort()) + " ok";
+    else if (hub.isMirroring())  s = "espelhando o Display principal desta maquina";
+    else                         s = "UDP " + juce::String (hub.getBusPort()) + " em uso por outro programa - tentando...";
+
+    if (hub.isWebPrimary())
+        s += "   |   Celular/tablet: " + hub.getWebAddressHint() + "   (" + juce::String (hub.getWebClients()) + " conectados)";
+    else if (hub.isMirroring())
+        s += "   |   Celular/tablet: " + hub.getWebAddressHint();
     if (statusLabel.getText() != s) statusLabel.setText (s, juce::dontSendNotification);
 }
 
 void DisplayAudioProcessorEditor::refresh (bool force)
 {
-    auto& store = processor.store;
+    auto& store = processor.store();
     lastVersion  = store.getVersion();
     lastFontSize = processor.fontSize;
     lastParticipantRefresh = juce::Time::getMillisecondCounter();
@@ -356,16 +351,16 @@ void DisplayAudioProcessorEditor::showSettings()
     };
 
     auto panel = std::make_unique<Panel>();
-    panel->bus.setText (juce::String (processor.getBusPort()));
-    panel->http.setText (juce::String (processor.getHttpPort()));
-    panel->webOn.setToggleState (processor.isWebEnabled(), juce::dontSendNotification);
+    panel->bus.setText (juce::String (processor.hub->getBusPort()));
+    panel->http.setText (juce::String (processor.hub->getHttpPort()));
+    panel->webOn.setVisible (false);
 
     auto* raw = panel.get();
     juce::Component::SafePointer<DisplayAudioProcessorEditor> safe (this);
     raw->apply.onClick = [safe, raw]
     {
         if (safe == nullptr) return;
-        safe->processor.setPorts (raw->bus.getText().getIntValue(), raw->http.getText().getIntValue(), raw->webOn.getToggleState());
+        safe->processor.hub->setPorts (raw->bus.getText().getIntValue(), raw->http.getText().getIntValue());
         if (auto* box = raw->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
     };
 

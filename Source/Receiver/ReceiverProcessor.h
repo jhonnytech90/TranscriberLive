@@ -4,12 +4,13 @@
 #include <juce_dsp/juce_dsp.h>
 #include "Common/TranscriptionEngine.h"
 #include "Common/MessageBus.h"
+#include "Common/Hub.h"
 
 //==============================================================================
 /**
-    Transcriber Live — plugin VST3/AU que transcreve em tempo real a voz falada
-    do canal onde está inserido. O áudio passa intacto (bypass) — o plugin só
-    "escuta".
+    Transcriber Live Receiver — um por canal de microfone. Transcreve a voz
+    falada do sinal que o host entrega e manda as frases para o Display (hub
+    local + UDP para um Display remoto, se configurado). O áudio passa intacto.
 */
 class TranscriberLiveAudioProcessor : public juce::AudioProcessor,
                                       private juce::Timer
@@ -45,15 +46,15 @@ public:
     //-- API para a UI -------------------------------------------------------------
     juce::AudioProcessorValueTreeState apvts;
     TranscriptionEngine engine;
+    juce::SharedResourcePointer<tl::Hub> hub;   // sobe UDP + web mesmo sem Display aberto
 
     float getInputLevelDb() const noexcept   { return inputLevelDb.load(); }
 
-    juce::File getModelFile() const          { return modelFile; }
-    juce::File getVadFile() const            { return vadFile; }
-    void setModelFile (const juce::File& f);
-    void setVadFile (const juce::File& f);
-
-    int  fontSize = 34;   // preferência de UI, salva no estado
+    //-- Modelos (pasta padrão: <dados do usuário>/TranscriberLive/models) ---------
+    juce::StringArray getAvailableModels() const;        // nomes de arquivo ggml-*.bin (sem o VAD)
+    juce::String      getSelectedModel() const           { return selectedModel; }
+    void              selectModel (const juce::String& fileName);
+    bool              hasVadModel() const                { return vadFile.existsAsFile(); }
 
     //-- Identidade do canal (Receiver -> Display) ---------------------------------
     struct Identity
@@ -63,42 +64,37 @@ public:
         juce::Colour colour { 0xff3ddc84 };
         int  importance = 1;             // 1 normal, 2 importante, 3 urgente
         bool flash = true;               // Display pisca quando este canal fala
-        juce::String busHost { "127.0.0.1" };
-        int  busPort = tl::kDefaultBusPort;
+        juce::String remoteHost;         // vazio = só o Display desta máquina; ex.: 192.168.0.20
+        int  remotePort = tl::kDefaultBusPort;
     };
 
     Identity getIdentity() const                 { const juce::ScopedLock sl (identityLock); return identity; }
     void     setIdentity (const Identity& id);
-    void     sendClearToDisplay();
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    // IDs dos parâmetros
     static constexpr const char* kParamGate      = "gate";       // dBFS
     static constexpr const char* kParamHold      = "hold";       // ms
     static constexpr const char* kParamVadSens   = "vadsens";    // 0..1
     static constexpr const char* kParamPartials  = "partials";   // bool
-    static constexpr const char* kParamListen    = "listen";     // bool (liga/desliga transcrição)
 
 private:
     void pushSettingsToEngine();
-    void timerCallback() override;               // heartbeat "hello" p/ o Display
+    void timerCallback() override;               // heartbeat "hello"
     void sendLine (const TranscriptionEngine::Line& line);
+    void send (const tl::Message& m);
     tl::Message makeMessage (const juce::String& type) const;
-
-    mutable juce::CriticalSection identityLock;
-    Identity identity;
-    tl::BusSender bus;
+    void autoSelectModel();
+    void loadModels();
 
     std::atomic<float>* gateParam     = nullptr;
     std::atomic<float>* holdParam     = nullptr;
     std::atomic<float>* vadSensParam  = nullptr;
     std::atomic<float>* partialsParam = nullptr;
-    std::atomic<float>* listenParam   = nullptr;
 
     // Reamostragem host -> 16 kHz (lowpass + interpolação linear com fase contínua)
     double hostSampleRate = 48000.0;
-    double resampleRatio  = 3.0;        // host / 16k
+    double resampleRatio  = 3.0;
     double resamplePhase  = 0.0;
     float  lastInputSample = 0.0f;
     juce::dsp::IIR::Filter<float> antiAlias1, antiAlias2;
@@ -106,7 +102,12 @@ private:
 
     std::atomic<float> inputLevelDb { -100.0f };
 
-    juce::File modelFile, vadFile;
+    juce::String selectedModel;
+    juce::File   modelFile, vadFile;
+
+    mutable juce::CriticalSection identityLock;
+    Identity identity;
+    tl::BusSender localBus, remoteBus;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TranscriberLiveAudioProcessor)
 };

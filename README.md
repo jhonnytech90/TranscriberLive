@@ -8,7 +8,11 @@ intacto pelos dois plugins — eles só "escutam".
 | Plugin | Onde vai | O que faz |
 |---|---|---|
 | **Transcriber Live Receiver** | Um em cada canal de mic (cantor, baixo, bateria...) | Transcreve a voz falada daquele canal e manda para o Display com nome, cor, importância e flash |
-| **Transcriber Live Display** | Em qualquer canal (ou como app Standalone) | Mostra tudo como conversa em balões coloridos, barra de participantes com filtro, flash de tela, e serve a página web para celular/tablet |
+| **Transcriber Live Display** | Em qualquer canal, ou como **app** (sem precisar de áudio) | Mostra tudo como conversa em balões coloridos, barra de participantes com filtro, flash de tela |
+
+O servidor para celular/tablet e o receptor UDP sobem **automaticamente com qualquer parte da
+ferramenta** (basta um Receiver carregado no host — não precisa abrir o Display). Se o app
+Display estiver aberto na mesma máquina, ele assume e o host espelha o estado dele.
 
 ```
  canal 1 ─ Receiver "Cantor"  ─┐
@@ -80,10 +84,10 @@ cd TranscriberLive
 # 3. Configurar (baixa JUCE e whisper.cpp na primeira vez — demora alguns minutos)
 cmake -B build -G Xcode
 
-# 4. Compilar os dois plugins (VST3 + AU) e os apps Standalone
+# 4. Compilar os dois plugins (VST3 + AU) e o app Display
 cmake --build build --config Release --target \
-    TranscriberLive_VST3 TranscriberLive_AU TranscriberLive_Standalone \
-    TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_AU TranscriberLiveDisplay_Standalone
+    TranscriberLive_VST3 TranscriberLive_AU \
+    TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_AU TranscriberLiveDisplayApp
 ```
 
 A primeira compilação leva de 10 a 25 minutos (o whisper.cpp e o JUCE são grandes). As
@@ -94,10 +98,9 @@ Onde os arquivos ficam:
 ```
 build/TranscriberLive_artefacts/Release/VST3/Transcriber Live Receiver.vst3
 build/TranscriberLive_artefacts/Release/AU/Transcriber Live Receiver.component
-build/TranscriberLive_artefacts/Release/Standalone/Transcriber Live Receiver.app
 build/TranscriberLiveDisplay_artefacts/Release/VST3/Transcriber Live Display.vst3
 build/TranscriberLiveDisplay_artefacts/Release/AU/Transcriber Live Display.component
-build/TranscriberLiveDisplay_artefacts/Release/Standalone/Transcriber Live Display.app
+build/TranscriberLiveDisplayApp_artefacts/Release/Transcriber Live Display.app     (app, sem áudio)
 ```
 
 Por padrão o build **já copia** os plugins para `~/Library/Audio/Plug-Ins/VST3` e
@@ -128,17 +131,16 @@ cd TranscriberLive
 :: 2. Configurar (baixa JUCE e whisper.cpp na primeira vez)
 cmake -B build -G "Visual Studio 17 2022" -A x64
 
-:: 3. Compilar os dois plugins (VST3) e os apps Standalone
-cmake --build build --config Release --target TranscriberLive_VST3 TranscriberLive_Standalone TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_Standalone
+:: 3. Compilar os dois plugins (VST3) e o app Display
+cmake --build build --config Release --target TranscriberLive_VST3 TranscriberLiveDisplay_VST3 TranscriberLiveDisplayApp
 ```
 
 Onde os arquivos ficam:
 
 ```
 build\TranscriberLive_artefacts\Release\VST3\Transcriber Live Receiver.vst3\
-build\TranscriberLive_artefacts\Release\Standalone\Transcriber Live Receiver.exe
 build\TranscriberLiveDisplay_artefacts\Release\VST3\Transcriber Live Display.vst3\
-build\TranscriberLiveDisplay_artefacts\Release\Standalone\Transcriber Live Display.exe
+build\TranscriberLiveDisplayApp_artefacts\Release\Transcriber Live Display.exe     (app, sem áudio)
 ```
 
 Por padrão o build tenta copiar os `.vst3` para `C:\Program Files\Common Files\VST3\` — isso
@@ -177,7 +179,7 @@ do macOS conta 10× — ainda sobra bastante para alguns builds por mês).
 |---|---|---|
 | VST3 | `~/Library/Audio/Plug-Ins/VST3/` (só seu usuário) ou `/Library/Audio/Plug-Ins/VST3/` (todos) | `C:\Program Files\Common Files\VST3\` |
 | AU | `~/Library/Audio/Plug-Ins/Components/` | — |
-| Standalone | Qualquer pasta (ex.: `/Applications`) | Qualquer pasta |
+| App Display | Qualquer pasta (ex.: `/Applications`) | Qualquer pasta |
 
 Copie a pasta `Transcriber Live Receiver.vst3` e `Transcriber Live Display.vst3` inteiras
 (no Windows um `.vst3` é uma pasta). Depois faça o host **re-escanear plugins**:
@@ -193,8 +195,9 @@ Copie a pasta `Transcriber Live Receiver.vst3` e `Transcriber Live Display.vst3`
 
 ## 6. Baixar os modelos (obrigatório)
 
-O Receiver precisa de dois arquivos. Baixe e coloque na pasta abaixo — o plugin carrega
-sozinho ao abrir. Ou escolha pela interface ("Modelo Whisper..." / "Modelo VAD...").
+O Receiver precisa de dois arquivos na pasta abaixo. O VAD é carregado sozinho; os modelos
+Whisper que estiverem na pasta aparecem na lista **Modelo** dentro do Receiver (pode deixar
+vários e trocar na hora). Sem escolher pasta, sem diálogo de arquivo.
 
 | Sistema | Pasta |
 |---|---|
@@ -239,25 +242,28 @@ Invoke-WebRequest https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml
    canal — não há seleção de entrada no plugin (se vier estéreo, ele soma).
 2. **Nome** (ex.: Cantor, Baixo), **Cor** (clique no botão), **Importância**
    (Normal / Importante / Urgente — muda o destaque do balão e a intensidade do flash),
-   **Flash no Display** (liga/desliga o piscar da tela quando este canal fala).
-3. **Display (IP:porta)**: deixe `127.0.0.1:47800` se o Display roda no mesmo computador.
-   Se roda em outro, coloque o IP dele (ex.: `192.168.0.20:47800`) ou o broadcast da rede
-   (`192.168.0.255:47800`).
-4. Confira a linha de status: "Modelo: ggml-small.bin | VAD: Silero". Se disser "Nenhum
-   modelo carregado", clique em **Modelo Whisper...** e escolha o `.bin`.
-5. **Gate** (linha no medidor): com o mic aberto e ninguém falando, deixe a linha um pouco
-   acima do nível do vazamento do palco.
-6. **Sensib. VAD**: mais alta pega fala mais baixa, mas deixa passar mais coisa. Comece em 0,5.
-7. **Fim de frase**: silêncio que fecha a frase (700 ms). Quem fala pausado: aumente.
-8. **TRANSCREVER** liga/desliga a escuta. É parâmetro do plugin — dá para automatizar por
-   snapshot/MIDI do host e desligar durante a música.
-9. O Receiver também mostra localmente o que transcreveu (fonte A-/A+, Limpar).
+   **Flash** (liga/desliga o piscar da tela do Display quando este canal fala).
+3. **Modelo**: lista o que está na pasta de modelos; escolha o que rodar melhor na máquina.
+   A linha de status confirma "Modelo: ... | VAD ok".
+4. Os três knobs (arraste vertical, bom para touch): **Gate** (linha no medidor — deixe um
+   pouco acima do vazamento do palco com o mic aberto e ninguém falando), **Sensib. VAD**
+   (mais alta pega fala mais baixa, mas deixa passar mais coisa; comece em 0,5) e
+   **Fim de frase** (silêncio que fecha a frase, 700 ms; quem fala pausado: aumente).
+5. **Parciais**: mostra o texto enquanto a pessoa ainda fala (desligue em CPU fraca).
+6. **Rede...**: só se o Display estiver em **outro computador** — coloque o IP dele
+   (ex.: `192.168.0.20:47800`). Na mesma máquina, deixe vazio.
+7. Para parar de transcrever, dê bypass ou remova o plugin no host (não há botão liga/desliga).
+8. A linha de baixo mostra a última frase reconhecida, só para conferência — o
+   acompanhamento é no Display e no celular.
 
 ### Display (um por computador da técnica)
 
-1. Insira **Transcriber Live Display** em qualquer canal (ou abra o app Standalone).
-2. A linha de status mostra `UDP 47800 ok` e o endereço para o celular. Os Receivers aparecem
-   na barra lateral em poucos segundos (heartbeat a cada 2 s; "offline" após 7 s sem sinal).
+1. Insira **Transcriber Live Display** em qualquer canal, ou abra o **app** Display (não usa
+   áudio). O celular funciona mesmo sem Display aberto — basta um Receiver no host.
+2. A linha de status mostra `UDP 47800 ok` e o endereço para o celular (ou "espelhando o
+   Display principal desta máquina", quando outro programa — ex.: o app — já tem as portas).
+   Os Receivers aparecem na barra lateral em poucos segundos (heartbeat a cada 2 s; "offline"
+   após 7 s sem sinal).
 3. Balões: cor da pessoa; Importante = negrito + "!"; Urgente = borda vermelha + fonte maior.
    Parcial (a pessoa ainda falando) aparece apagada e em itálico, e vira a frase final no lugar.
 4. Clique num participante para ver só ele; **Todos** volta ao normal.
@@ -308,8 +314,7 @@ Firewall no macOS: Ajustes → Rede → Firewall → Opções → permitir o hos
 | `gate` | Gate | −80 … −10 dBFS | −45 |
 | `hold` | Fim de frase | 300 … 2000 ms | 700 |
 | `vadsens` | Sensibilidade VAD | 0 … 1 | 0,5 |
-| `partials` | Mostrar parciais | on/off | on |
-| `listen` | Transcrever | on/off | on |
+| `partials` | Parciais | on/off | on |
 
 Nome, cor, importância, flash e endereço do Display são salvos no estado do plugin (sessão /
 snapshot do host), não são parâmetros automatizáveis.
@@ -326,10 +331,11 @@ snapshot do host), não são parâmetros automatizáveis.
 | Configuração trava baixando JUCE/whisper | Internet/proxy. Clone os dois à mão e use `-DJUCE_DIR=... -DWHISPER_DIR=...`. |
 | Erro de permissão ao copiar o `.vst3` (Windows) | Rode o prompt como Administrador, ou `-DTRANSCRIBER_COPY_PLUGIN=OFF` e copie à mão. |
 | O plugin não aparece no host | Re-escaneie; confira a pasta de instalação; no macOS remova a quarentena (`xattr -dr com.apple.quarantine ...`). SuperRack: precisa ser **Performer V14+**. |
-| "Nenhum modelo carregado" | Coloque os `.bin` na pasta de modelos (seção 6) ou escolha pela UI. |
+| "Nenhum modelo carregado" / lista Modelo vazia | Coloque os `.bin` na pasta de modelos (seção 6). A lista atualiza sozinha em 5 s. |
+| O host ou o app fechava sozinho quando o celular desconectava (v0.2) | Corrigido na v0.3: os sockets agora ignoram `SIGPIPE` (o macOS matava o processo ao escrever num socket fechado). |
 | Transcreve com atraso grande / o host engasga | Modelo grande demais para a CPU. Use `small` ou `small-q5_1`. Desligue "Mostrar parciais". |
 | Muita coisa errada / inventada | Suba o **Gate**, baixe a **Sensib. VAD**, confira se o VAD Silero está carregado (linha de status). Desligue TRANSCREVER durante a música. |
-| Display diz "UDP 47800 FALHOU" | Outro Display (ou outra instância) já usa a porta. Feche o outro ou mude em **Rede...** e ajuste o `Display (IP:porta)` nos Receivers. |
+| Display diz "em uso por outro programa - tentando..." e não espelha | Outro programa (não o Transcriber) usa a porta 47801. Mude as portas em **Rede...** (vale para todos os plugins e o app na máquina). |
 | Receivers não aparecem no Display | Confira o IP:porta no Receiver; firewall; se estão em computadores diferentes, os dois no mesmo Wi-Fi/cabo. |
 | Celular não abre a página | Mesmo Wi-Fi; firewall liberado na porta 47801; digite `http://` (não `https`). |
 
@@ -355,7 +361,8 @@ host (SuperRack Performer / REAPER / Live Professor)  →  canal do mic
       repetição de n-gramas, razão de janelas com voz no segmento)
                                          │
                                          ▼
-      UDP 47800 (JSON: hello / msg / clear)  →  Display  →  balões + HTTP 47801 (SSE) p/ celular
+      UDP 47800 (JSON: hello / msg / clear)  →  Hub (em qualquer processo da ferramenta)
+                                                  →  Display (balões) + HTTP 47801 (SSE) p/ celular
 ```
 
 ---
@@ -371,11 +378,15 @@ Source/Common/
   MessageBus.h                     BusSender (UDP) / BusListener
   MessageStore.h                   participantes + histórico (Display)
   HttpServer.h                     servidor web embutido (/, /state, /events SSE, /clear)
+  Hub.*                            singleton por processo: store + UDP + web; primário/espelho
+  SocketSafety.h                   proteção SIGPIPE (SO_NOSIGPIPE / SIG_IGN)
   DarkLookAndFeel.h                tema escuro neutro dos dois plugins
 Source/Receiver/                   processor (medidor, reamostragem, identidade) + editor
-Source/Display/                    processor (listener UDP + store + web) + editor (balões, sidebar, flash)
+Source/Display/                    processor + editor (balões, sidebar, flash) + DisplayApp.cpp (app sem áudio)
 Resources/display.html             página para celular/tablet (embutida no binário)
-Tests/EngineTest.cpp               teste de console: EngineTest modelo vad audio.wav [gateDb] [idioma] [nomeCanal]
+Resources/icon.svg / icon_*.png    ícone
+Tests/EngineTest.cpp               teste de console do motor: EngineTest modelo vad audio.wav [gateDb] [idioma] [nomeCanal]
+Tests/ReceiverTest.cpp             app de teste do Receiver inteiro (processor + hub + editor): ReceiverTest audio.wav [idioma] [nome]
 ```
 
 Teste de console (opcional): `cmake -B build -DTRANSCRIBER_BUILD_TESTS=ON` e

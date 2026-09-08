@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include "Protocol.h"
+#include "SocketSafety.h"
 #include <functional>
 
 namespace tl
@@ -11,7 +12,7 @@ namespace tl
     class BusSender
     {
     public:
-        BusSender() { socket.bindToPort (0); }
+        BusSender() { ignoreSigpipeOnce(); socket.bindToPort (0); makeSocketSafe (socket.getRawSocketHandle()); }
 
         void setTarget (const juce::String& host, int port)
         {
@@ -50,6 +51,7 @@ namespace tl
         bool start (int port)
         {
             stop();
+            ignoreSigpipeOnce();
             socket = std::make_unique<juce::DatagramSocket> (false);
             if (! socket->bindToPort (port))
             {
@@ -57,6 +59,7 @@ namespace tl
                 bound.store (false);
                 return false;
             }
+            makeSocketSafe (socket->getRawSocketHandle());
             boundPort = port;
             bound.store (true);
             startThread();

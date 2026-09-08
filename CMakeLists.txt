@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(TranscriberLive VERSION 0.1.0 LANGUAGES C CXX)
+project(TranscriberLive VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -52,9 +52,14 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# Plugins: Receiver (um por canal) e Display (conversa + servidor web)
+# Plugins: Receiver (um por canal) e Display (conversa) + app Display (sem áudio)
 # ---------------------------------------------------------------------------
 option(TRANSCRIBER_COPY_PLUGIN "Copia os plugins p/ a pasta de plugins do sistema após o build" ON)
+
+set(TL_COMPANY      "Jhonatan Miikael")
+set(TL_BUNDLE_BASE  "com.jhonatanmiikael")
+set(TL_ICON_BIG     "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon_1024.png")
+set(TL_ICON_SMALL   "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon_256.png")
 
 set(TL_COMMON_DEFS
     JUCE_WEB_BROWSER=0
@@ -62,14 +67,20 @@ set(TL_COMMON_DEFS
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
+# recursos compartilhados (página web do celular) + hub
+juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html)
+set(TL_COMMON_SOURCES Source/Common/Hub.cpp)
+
 # ---- Receiver ----
 juce_add_plugin(TranscriberLive
-    COMPANY_NAME                "Jhonatan Audio"
-    BUNDLE_ID                   "com.jhonatanaudio.transcriberlive"
-    PLUGIN_MANUFACTURER_CODE    Jhna
+    COMPANY_NAME                "${TL_COMPANY}"
+    BUNDLE_ID                   "${TL_BUNDLE_BASE}.transcriberlive.receiver"
+    PLUGIN_MANUFACTURER_CODE    Jhmk
     PLUGIN_CODE                 Trlv
-    FORMATS                     VST3 AU Standalone
+    FORMATS                     VST3 AU
     PRODUCT_NAME                "Transcriber Live Receiver"
+    ICON_BIG                    "${TL_ICON_BIG}"
+    ICON_SMALL                  "${TL_ICON_SMALL}"
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE
@@ -82,11 +93,13 @@ juce_add_plugin(TranscriberLive
 target_sources(TranscriberLive PRIVATE
     Source/Receiver/ReceiverProcessor.cpp
     Source/Receiver/ReceiverEditor.cpp
-    Source/Common/TranscriptionEngine.cpp)
+    Source/Common/TranscriptionEngine.cpp
+    ${TL_COMMON_SOURCES})
 
 target_include_directories(TranscriberLive PRIVATE Source)
 target_compile_definitions(TranscriberLive PUBLIC ${TL_COMMON_DEFS})
 target_link_libraries(TranscriberLive PRIVATE
+    TranscriberDisplayData
     juce::juce_audio_utils
     juce::juce_dsp
     whisper
@@ -95,16 +108,16 @@ target_link_libraries(TranscriberLive PRIVATE
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags)
 
-# ---- Display ----
-juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html)
-
+# ---- Display (plugin) ----
 juce_add_plugin(TranscriberLiveDisplay
-    COMPANY_NAME                "Jhonatan Audio"
-    BUNDLE_ID                   "com.jhonatanaudio.transcriberlivedisplay"
-    PLUGIN_MANUFACTURER_CODE    Jhna
+    COMPANY_NAME                "${TL_COMPANY}"
+    BUNDLE_ID                   "${TL_BUNDLE_BASE}.transcriberlive.display"
+    PLUGIN_MANUFACTURER_CODE    Jhmk
     PLUGIN_CODE                 Trld
-    FORMATS                     VST3 AU Standalone
+    FORMATS                     VST3 AU
     PRODUCT_NAME                "Transcriber Live Display"
+    ICON_BIG                    "${TL_ICON_BIG}"
+    ICON_SMALL                  "${TL_ICON_SMALL}"
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE
@@ -116,13 +129,39 @@ juce_add_plugin(TranscriberLiveDisplay
 
 target_sources(TranscriberLiveDisplay PRIVATE
     Source/Display/DisplayProcessor.cpp
-    Source/Display/DisplayEditor.cpp)
+    Source/Display/DisplayEditor.cpp
+    ${TL_COMMON_SOURCES})
 
 target_include_directories(TranscriberLiveDisplay PRIVATE Source)
 target_compile_definitions(TranscriberLiveDisplay PUBLIC ${TL_COMMON_DEFS})
 target_link_libraries(TranscriberLiveDisplay PRIVATE
     TranscriberDisplayData
     juce::juce_audio_utils
+    PUBLIC
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_lto_flags
+    juce::juce_recommended_warning_flags)
+
+# ---- Display (app Standalone, sem dispositivo de áudio) ----
+juce_add_gui_app(TranscriberLiveDisplayApp
+    COMPANY_NAME    "${TL_COMPANY}"
+    BUNDLE_ID       "${TL_BUNDLE_BASE}.transcriberlive.displayapp"
+    PRODUCT_NAME    "Transcriber Live Display"
+    ICON_BIG        "${TL_ICON_BIG}"
+    ICON_SMALL      "${TL_ICON_SMALL}")
+
+target_sources(TranscriberLiveDisplayApp PRIVATE
+    Source/Display/DisplayApp.cpp
+    Source/Display/DisplayProcessor.cpp
+    Source/Display/DisplayEditor.cpp
+    ${TL_COMMON_SOURCES})
+
+target_include_directories(TranscriberLiveDisplayApp PRIVATE Source)
+target_compile_definitions(TranscriberLiveDisplayApp PRIVATE ${TL_COMMON_DEFS} TRANSCRIBER_DISPLAY_APP=1 JUCE_APPLICATION_NAME_STRING="Transcriber Live Display" JUCE_APPLICATION_VERSION_STRING="0.3.0")
+target_link_libraries(TranscriberLiveDisplayApp PRIVATE
+    TranscriberDisplayData
+    juce::juce_audio_utils
+    juce::juce_gui_extra
     PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
@@ -138,5 +177,13 @@ if(TRANSCRIBER_BUILD_TESTS)
     target_include_directories(EngineTest PRIVATE Source Source/Common)
     target_compile_definitions(EngineTest PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 TRANSCRIBER_DEBUG=1)
     target_link_libraries(EngineTest PRIVATE juce::juce_audio_formats juce::juce_gui_basics whisper
+        PUBLIC juce::juce_recommended_config_flags)
+
+    juce_add_gui_app(ReceiverTest PRODUCT_NAME "ReceiverTest")
+    target_sources(ReceiverTest PRIVATE Tests/ReceiverTest.cpp Source/Receiver/ReceiverProcessor.cpp Source/Receiver/ReceiverEditor.cpp
+        Source/Common/TranscriptionEngine.cpp ${TL_COMMON_SOURCES})
+    target_include_directories(ReceiverTest PRIVATE Source)
+    target_compile_definitions(ReceiverTest PRIVATE ${TL_COMMON_DEFS} JucePlugin_Name="Transcriber Live Receiver")
+    target_link_libraries(ReceiverTest PRIVATE TranscriberDisplayData juce::juce_gui_extra juce::juce_audio_formats juce::juce_audio_utils juce::juce_dsp juce::juce_audio_processors whisper
         PUBLIC juce::juce_recommended_config_flags)
 endif()

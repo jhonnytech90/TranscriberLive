@@ -2,13 +2,12 @@
 
 namespace
 {
-    const juce::Colour kBg        = tl::col::bg;
-    const juce::Colour kPanel     = tl::col::panel;
-    const juce::Colour kText      = tl::col::text;
-    const juce::Colour kDim       = tl::col::dim;
-    const juce::Colour kAccent    = tl::col::text;
-    const juce::Colour kWarn      = tl::col::dim;      // linha do gate (neutra)
-    const juce::Colour kPartial   { 0xffb0bac6 };
+    const juce::Colour kBg    = tl::col::bg;
+    const juce::Colour kPanel = tl::col::panel;
+    const juce::Colour kText  = tl::col::text;
+    const juce::Colour kDim   = tl::col::dim;
+
+    juce::String utf8 (const char* s) { return juce::String (juce::CharPointer_UTF8 (s)); }
 }
 
 //==============================================================================
@@ -25,68 +24,9 @@ void LevelMeter::paint (juce::Graphics& g)
     g.setColour (speechActive ? kText : kDim.withAlpha (0.6f));
     g.fillRoundedRectangle (r.getX(), r.getY() + 2.0f, x - r.getX(), r.getHeight() - 4.0f, 2.0f);
 
-    // linha do gate
     const float gx = toX (gate);
-    g.setColour (kWarn);
+    g.setColour (kText);
     g.fillRect (gx - 1.0f, r.getY(), 2.0f, r.getHeight());
-}
-
-//==============================================================================
-void TranscriptView::setLines (std::vector<TranscriptionEngine::Line> newLines, int fontSize)
-{
-    lines  = std::move (newLines);
-    fontPx = fontSize;
-    setSize (getWidth(), getPreferredHeight (getWidth()));
-    repaint();
-}
-
-int TranscriptView::getPreferredHeight (int width) const
-{
-    const juce::Font f (juce::FontOptions ((float) fontPx));
-    int h = 12;
-    const int textW = juce::jmax (50, width - 24);
-
-    for (auto& l : lines)
-    {
-        juce::AttributedString as (l.text);
-        as.setFont (f);
-        juce::TextLayout tl;
-        tl.createLayout (as, (float) textW);
-        h += (int) tl.getHeight() + fontPx / 2 + 8;
-    }
-    return juce::jmax (h, 40);
-}
-
-void TranscriptView::paint (juce::Graphics& g)
-{
-    const juce::Font f (juce::FontOptions ((float) fontPx));
-    const juce::Font small (juce::FontOptions (12.0f));
-    const int textW = juce::jmax (50, getWidth() - 24);
-    int y = 12;
-
-    for (auto& l : lines)
-    {
-        juce::AttributedString as (l.text);
-        as.setFont (l.isFinal ? f : f.italicised());
-        as.setColour (l.isFinal ? kText : kPartial);
-        juce::TextLayout tl;
-        tl.createLayout (as, (float) textW);
-
-        g.setColour (kDim);
-        g.setFont (small);
-        g.drawText (l.time.formatted ("%H:%M:%S") + (l.isFinal ? "" : "  ..."),
-                    12, y, textW, 12, juce::Justification::left);
-
-        tl.draw (g, juce::Rectangle<float> (12.0f, (float) y + 12.0f, (float) textW, tl.getHeight()));
-        y += (int) tl.getHeight() + fontPx / 2 + 8;
-    }
-
-    if (lines.empty())
-    {
-        g.setColour (kDim);
-        g.setFont (juce::FontOptions (18.0f));
-        g.drawText ("Aguardando fala...", getLocalBounds(), juce::Justification::centred);
-    }
 }
 
 //==============================================================================
@@ -94,49 +34,34 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     : AudioProcessorEditor (&p), processor (p)
 {
     setLookAndFeel (&lnf);
-    setResizable (true, true);
-    setResizeLimits (900, 420, 3000, 2000);
-    setSize (960, 600);
+    setSize (620, 330);
 
-    auto initLabel = [this] (juce::Label& l, const juce::String& text, float size, juce::Colour c)
+    auto initLabel = [this] (juce::Label& l, const juce::String& text, float size, juce::Colour c, juce::Justification j = juce::Justification::left)
     {
         l.setText (text, juce::dontSendNotification);
         l.setFont (juce::FontOptions (size));
         l.setColour (juce::Label::textColourId, c);
+        l.setJustificationType (j);
         addAndMakeVisible (l);
     };
 
-    initLabel (titleLabel,  "TRANSCRIBER LIVE", 16.0f, kAccent);
-    initLabel (statusLabel, "", 13.0f, kDim);
-    initLabel (speechLabel, "FALA", 13.0f, kBg);
-    speechLabel.setJustificationType (juce::Justification::centred);
+    initLabel (titleLabel,      "TRANSCRIBER LIVE  -  RECEIVER", 14.0f, kText);
+    initLabel (statusLabel,     "", 12.0f, kDim, juce::Justification::right);
+    initLabel (speechLabel,     "FALA", 12.0f, kDim, juce::Justification::centred);
+    initLabel (lastLineLabel,   "", 15.0f, kDim);
+    initLabel (nameLabel,       "Nome", 12.0f, kDim);
+    initLabel (importanceLabel, utf8 ("Import\xc3\xa2ncia"), 12.0f, kDim);
+    initLabel (modelLabel,      "Modelo", 12.0f, kDim);
+    initLabel (gateLabel,       "Gate", 12.0f, kDim, juce::Justification::centred);
+    initLabel (vadLabel,        "Sensib. VAD", 12.0f, kDim, juce::Justification::centred);
+    initLabel (holdLabel,       "Fim de frase", 12.0f, kDim, juce::Justification::centred);
 
-    addAndMakeVisible (listenButton);
-    addAndMakeVisible (meter);
-
-    for (auto* b : { &modelButton, &vadButton, &clearButton, &fontDownButton, &fontUpButton })
-        addAndMakeVisible (b);
-
-    modelButton.onClick    = [this] { chooseModel (false); };
-    vadButton.onClick      = [this] { chooseModel (true); };
-    clearButton.onClick    = [this] { processor.engine.clearLines(); processor.sendClearToDisplay(); };
-    fontDownButton.onClick = [this] { processor.fontSize = juce::jmax (16, processor.fontSize - 4); };
-    fontUpButton.onClick   = [this] { processor.fontSize = juce::jmin (96, processor.fontSize + 4); };
-
-    // ---- identidade do canal --------------------------------------------------
-    initLabel (nameLabel,       "Nome",        12.0f, kDim);
-    initLabel (importanceLabel, juce::String (juce::CharPointer_UTF8 ("Import\xc3\xa2ncia")), 12.0f, kDim);
-    initLabel (targetLabel,     "Display (IP:porta)", 12.0f, kDim);
-
-    for (auto* e : { &nameEditor, &targetEditor })
-    {
-        e->setFont (juce::FontOptions (14.0f));
-            e->onReturnKey = [this] { applyIdentityFromUi(); };
-        e->onFocusLost = [this] { applyIdentityFromUi(); };
-        addAndMakeVisible (e);
-    }
-    nameEditor.setTextToShowWhenEmpty ("ex.: Cantor, Baixo, Palco...", kDim);
-    targetEditor.setTextToShowWhenEmpty ("127.0.0.1:47800", kDim);
+    // ---- identidade ------------------------------------------------------------
+    nameEditor.setFont (juce::FontOptions (14.0f));
+    nameEditor.setTextToShowWhenEmpty ("ex.: Cantor, Baixo...", kDim);
+    nameEditor.onReturnKey = [this] { applyIdentityFromUi(); };
+    nameEditor.onFocusLost = [this] { applyIdentityFromUi(); };
+    addAndMakeVisible (nameEditor);
 
     importanceBox.addItemList ({ "Normal", "Importante", "Urgente" }, 1);
     importanceBox.onChange = [this] { applyIdentityFromUi(); };
@@ -166,36 +91,44 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     };
     addAndMakeVisible (colourButton);
 
-    loadIdentityToUi();
+    networkButton.onClick = [this] { showNetwork(); };
+    addAndMakeVisible (networkButton);
 
-    viewport.setViewedComponent (&transcript, false);
-    viewport.setScrollBarsShown (true, false);
-    addAndMakeVisible (viewport);
-
-    // ---- rodapé ---------------------------------------------------------------
-    initLabel (gateLabel,    "Gate",        12.0f, kDim);
-    initLabel (holdLabel,    "Fim de frase",12.0f, kDim);
-    initLabel (vadLabel,     "Sensib. VAD", 12.0f, kDim);
-
-    for (auto* s : { &gateSlider, &holdSlider, &vadSlider })
+    // ---- modelo ------------------------------------------------------------------
+    modelBox.onChange = [this]
     {
-        s->setSliderStyle (juce::Slider::LinearHorizontal);
-        s->setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
+        const auto name = modelBox.getText();
+        if (name.isNotEmpty() && name != processor.getSelectedModel())
+            processor.selectModel (name);
+    };
+    addAndMakeVisible (modelBox);
+    refreshModelList();
+
+    // ---- medidor + knobs ---------------------------------------------------------
+    addAndMakeVisible (meter);
+
+    auto initKnob = [this] (juce::Slider& s, const juce::String& suffix, int decimals)
+    {
+        s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 74, 20);
+        s.setTextValueSuffix (suffix);
+        s.setNumDecimalPlacesToDisplay (decimals);
+        s.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f, juce::MathConstants<float>::pi * 2.75f, true);
         addAndMakeVisible (s);
-    }
-    gateSlider.setTextValueSuffix (" dB");
-    holdSlider.setTextValueSuffix (" ms");
+    };
+    initKnob (gateSlider, " dB", 0);
+    initKnob (vadSlider,  "",    2);
+    initKnob (holdSlider, " ms", 0);
 
     addAndMakeVisible (partialsButton);
 
     auto& apvts = processor.apvts;
-    gateAttachment     = std::make_unique<APVTS::SliderAttachment>   (apvts, TranscriberLiveAudioProcessor::kParamGate,     gateSlider);
-    holdAttachment     = std::make_unique<APVTS::SliderAttachment>   (apvts, TranscriberLiveAudioProcessor::kParamHold,     holdSlider);
-    vadAttachment      = std::make_unique<APVTS::SliderAttachment>   (apvts, TranscriberLiveAudioProcessor::kParamVadSens,  vadSlider);
-    partialsAttachment = std::make_unique<APVTS::ButtonAttachment>   (apvts, TranscriberLiveAudioProcessor::kParamPartials, partialsButton);
-    listenAttachment   = std::make_unique<APVTS::ButtonAttachment>   (apvts, TranscriberLiveAudioProcessor::kParamListen,   listenButton);
+    gateAttachment     = std::make_unique<APVTS::SliderAttachment> (apvts, TranscriberLiveAudioProcessor::kParamGate,     gateSlider);
+    vadAttachment      = std::make_unique<APVTS::SliderAttachment> (apvts, TranscriberLiveAudioProcessor::kParamVadSens,  vadSlider);
+    holdAttachment     = std::make_unique<APVTS::SliderAttachment> (apvts, TranscriberLiveAudioProcessor::kParamHold,     holdSlider);
+    partialsAttachment = std::make_unique<APVTS::ButtonAttachment> (apvts, TranscriberLiveAudioProcessor::kParamPartials, partialsButton);
 
-    updateStatus();
+    loadIdentityToUi();
     startTimerHz (15);
 }
 
@@ -206,77 +139,67 @@ void TranscriberLiveAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (kBg);
     g.setColour (kPanel);
-    g.fillRect (getLocalBounds().removeFromTop (116));
-    g.fillRect (getLocalBounds().removeFromBottom (92));
+    g.fillRect (getLocalBounds().removeFromTop (30));
+    g.fillRect (getLocalBounds().removeFromBottom (44));
 }
 
 void TranscriberLiveAudioProcessorEditor::resized()
 {
     auto r = getLocalBounds();
 
-    // ---- topo ----
-    auto top = r.removeFromTop (116).reduced (10, 8);
-    auto row1 = top.removeFromTop (28);
-    titleLabel.setBounds (row1.removeFromLeft (170));
-    listenButton.setBounds (row1.removeFromLeft (140));
-    speechLabel.setBounds (row1.removeFromLeft (60).reduced (0, 4));
-    row1.removeFromLeft (8);
-    fontUpButton.setBounds (row1.removeFromRight (40));
-    fontDownButton.setBounds (row1.removeFromRight (40));
-    row1.removeFromRight (8);
-    clearButton.setBounds (row1.removeFromRight (80));
-    row1.removeFromRight (8);
-    vadButton.setBounds (row1.removeFromRight (120));
-    row1.removeFromRight (6);
-    modelButton.setBounds (row1.removeFromRight (150));
+    auto top = r.removeFromTop (30).reduced (12, 4);
+    titleLabel.setBounds (top.removeFromLeft (260));
+    statusLabel.setBounds (top);
 
-    top.removeFromTop (6);
-    auto rowId = top.removeFromTop (26);
-    nameLabel.setBounds (rowId.removeFromLeft (44));
-    nameEditor.setBounds (rowId.removeFromLeft (150).reduced (0, 1));
-    rowId.removeFromLeft (6);
-    colourButton.setBounds (rowId.removeFromLeft (60));
-    rowId.removeFromLeft (10);
-    importanceLabel.setBounds (rowId.removeFromLeft (76));
-    importanceBox.setBounds (rowId.removeFromLeft (120).reduced (0, 1));
-    rowId.removeFromLeft (10);
-    flashButton.setBounds (rowId.removeFromLeft (140));
-    targetEditor.setBounds (rowId.removeFromRight (150).reduced (0, 1));
-    targetLabel.setBounds (rowId.removeFromRight (110));
+    auto bottom = r.removeFromBottom (44).reduced (12, 6);
+    lastLineLabel.setBounds (bottom);
 
-    top.removeFromTop (6);
-    auto row2 = top.removeFromTop (22);
-    meter.setBounds (row2.removeFromLeft (300).reduced (0, 4));
-    row2.removeFromLeft (12);
-    statusLabel.setBounds (row2);
+    r.reduce (12, 6);
 
-    // ---- rodapé ----
-    auto bottom = r.removeFromBottom (92).reduced (10, 8);
-    auto brow1 = bottom.removeFromTop (36);
-    auto brow2 = bottom.removeFromTop (36);
+    // linha 1: identidade
+    auto row1 = r.removeFromTop (30);
+    nameLabel.setBounds (row1.removeFromLeft (40));
+    nameEditor.setBounds (row1.removeFromLeft (150).reduced (0, 2));
+    row1.removeFromLeft (6);
+    colourButton.setBounds (row1.removeFromLeft (52).reduced (0, 2));
+    row1.removeFromLeft (10);
+    importanceLabel.setBounds (row1.removeFromLeft (72));
+    importanceBox.setBounds (row1.removeFromLeft (118).reduced (0, 2));
+    row1.removeFromLeft (10);
+    flashButton.setBounds (row1.removeFromLeft (70));
+    networkButton.setBounds (row1.removeFromRight (70).reduced (0, 2));
 
-    const int colW = juce::jmax (150, brow1.getWidth() / 3);
+    r.removeFromTop (6);
 
-    auto c2 = brow1.removeFromLeft (colW * 2);
-    gateLabel.setBounds (c2.removeFromLeft (80));
-    gateSlider.setBounds (c2);
+    // linha 2: modelo
+    auto row2 = r.removeFromTop (30);
+    modelLabel.setBounds (row2.removeFromLeft (52));
+    modelBox.setBounds (row2.reduced (0, 2));
 
-    auto c3 = brow1;
-    vadLabel.setBounds (c3.removeFromLeft (80));
-    vadSlider.setBounds (c3);
+    r.removeFromTop (8);
 
-    auto d2 = brow2.removeFromLeft (colW * 2);
-    holdLabel.setBounds (d2.removeFromLeft (80));
-    holdSlider.setBounds (d2);
+    // linha 3: medidor + FALA
+    auto row3 = r.removeFromTop (18);
+    speechLabel.setBounds (row3.removeFromRight (56));
+    row3.removeFromRight (8);
+    meter.setBounds (row3);
 
-    auto d1 = brow2;
-    d1.removeFromLeft (80);
-    partialsButton.setBounds (d1.reduced (0, 4));
+    r.removeFromTop (8);
 
-    // ---- centro ----
-    viewport.setBounds (r.reduced (6, 4));
-    transcript.setSize (viewport.getMaximumVisibleWidth(), transcript.getPreferredHeight (viewport.getMaximumVisibleWidth()));
-    lastLinesVersion = -1;   // força re-layout
+    // linha 4: knobs
+    auto knobs = r;
+    const int kw = 130;
+    auto placeKnob = [&] (juce::Slider& s, juce::Label& l)
+    {
+        auto col = knobs.removeFromLeft (kw);
+        l.setBounds (col.removeFromBottom (16));
+        s.setBounds (col);
+    };
+    placeKnob (gateSlider, gateLabel);
+    placeKnob (vadSlider,  vadLabel);
+    placeKnob (holdSlider, holdLabel);
+    knobs.removeFromLeft (10);
+    partialsButton.setBounds (knobs.removeFromTop (26));
 }
 
 //==============================================================================
@@ -292,45 +215,55 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
     speechLabel.setColour (juce::Label::backgroundColourId, speech ? kText : juce::Colours::transparentBlack);
     speechLabel.setColour (juce::Label::textColourId, speech ? kBg : kDim);
 
-    if (eng.getLinesVersion() != lastLinesVersion || processor.fontSize != lastFontSize)
-        refreshTranscript();
-
-    updateStatus();
-}
-
-void TranscriberLiveAudioProcessorEditor::refreshTranscript()
-{
-    auto& eng = processor.engine;
-    lastLinesVersion = eng.getLinesVersion();
-    lastFontSize     = processor.fontSize;
-
-    const int w = viewport.getMaximumVisibleWidth();
-    transcript.setSize (w, 10);
-    transcript.setLines (eng.getLines(), processor.fontSize);
-
-    // rola para o fim (última frase sempre visível)
-    viewport.setViewPosition (0, juce::jmax (0, transcript.getHeight() - viewport.getViewHeight()));
-}
-
-void TranscriberLiveAudioProcessorEditor::updateStatus()
-{
-    auto& eng = processor.engine;
+    // status: modelo + VAD + hub
     juce::String s = eng.getStatus();
-
     if (eng.isModelLoaded())
-        s += eng.isVadLoaded() ? juce::String ("   |   VAD: Silero") : juce::String (juce::CharPointer_UTF8 ("   |   VAD: s\xc3\xb3 por n\xc3\xadvel (carregue o Silero p/ melhor rejei\xc3\xa7\xc3\xa3o)"));
-    if (eng.isTranscribing())
-        s += "   |   transcrevendo...";
+        s += processor.hasVadModel() ? "  |  VAD ok" : utf8 ("  |  VAD n\xc3\xa3o encontrado (ggml-silero*.bin)");
+    if (eng.isTranscribing()) s += "  |  transcrevendo...";
+    if (statusLabel.getText() != s) statusLabel.setText (s, juce::dontSendNotification);
 
-    if (statusLabel.getText() != s)
-        statusLabel.setText (s, juce::dontSendNotification);
+    // última frase reconhecida (só como conferência; o acompanhamento é no Display / celular)
+    if (eng.getLinesVersion() != lastLinesVersion)
+    {
+        lastLinesVersion = eng.getLinesVersion();
+        auto lines = eng.getLines();
+        juce::String t = lines.empty() ? juce::String() : lines.back().text;
+        if (! lines.empty() && ! lines.back().isFinal) t += " ...";
+        lastLineLabel.setText (t, juce::dontSendNotification);
+    }
+
+    // lista de modelos (re-escaneia a pasta a cada 5 s — barato)
+    const auto now = juce::Time::getMillisecondCounter();
+    if (now - lastModelScan > 5000) refreshModelList();
+}
+
+void TranscriberLiveAudioProcessorEditor::refreshModelList()
+{
+    lastModelScan = juce::Time::getMillisecondCounter();
+    const auto models = processor.getAvailableModels();
+    const auto selected = processor.getSelectedModel();
+
+    if (models != lastModelList || modelBox.getText() != selected)
+    {
+        lastModelList = models;
+        modelBox.clear (juce::dontSendNotification);
+        if (models.isEmpty())
+        {
+            modelBox.setTextWhenNothingSelected (utf8 ("nenhum modelo em ") + tl::Hub::getModelsDir().getFullPathName());
+        }
+        else
+        {
+            modelBox.addItemList (models, 1);
+            const int idx = models.indexOf (selected);
+            modelBox.setSelectedItemIndex (idx >= 0 ? idx : 0, juce::dontSendNotification);
+        }
+    }
 }
 
 void TranscriberLiveAudioProcessorEditor::loadIdentityToUi()
 {
     const auto id = processor.getIdentity();
     nameEditor.setText (id.name, juce::dontSendNotification);
-    targetEditor.setText (id.busHost + ":" + juce::String (id.busPort), juce::dontSendNotification);
     importanceBox.setSelectedId (id.importance, juce::dontSendNotification);
     flashButton.setToggleState (id.flash, juce::dontSendNotification);
     colourButton.setColour (juce::TextButton::buttonColourId, id.colour);
@@ -344,36 +277,60 @@ void TranscriberLiveAudioProcessorEditor::applyIdentityFromUi()
     if (id.name.isEmpty()) id.name = "Canal";
     id.importance = juce::jmax (1, importanceBox.getSelectedId());
     id.flash = flashButton.getToggleState();
-
-    auto target = targetEditor.getText().trim();
-    if (target.isNotEmpty())
-    {
-        id.busHost = target.upToFirstOccurrenceOf (":", false, false).trim();
-        const auto port = target.fromFirstOccurrenceOf (":", false, false).getIntValue();
-        id.busPort = port > 0 ? port : tl::kDefaultBusPort;
-    }
     processor.setIdentity (id);
     loadIdentityToUi();
 }
 
-void TranscriberLiveAudioProcessorEditor::chooseModel (bool vad)
+void TranscriberLiveAudioProcessorEditor::showNetwork()
 {
-    auto start = (vad ? processor.getVadFile() : processor.getModelFile()).getParentDirectory();
-    if (! start.isDirectory())
-        start = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
-
-    fileChooser = std::make_unique<juce::FileChooser> (
-        vad ? "Escolha o modelo Silero VAD (ggml-silero-*.bin)" : "Escolha o modelo Whisper (ggml-*.bin)",
-        start, "*.bin");
-
-    fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-        [this, vad] (const juce::FileChooser& fc)
+    struct Panel : juce::Component
+    {
+        juce::Label info, l1;
+        juce::TextEditor remote;
+        juce::TextButton apply { "Aplicar" };
+        Panel()
         {
-            const auto f = fc.getResult();
-            if (f.existsAsFile())
-            {
-                if (vad) processor.setVadFile (f);
-                else     processor.setModelFile (f);
-            }
-        });
+            for (auto* c : std::initializer_list<juce::Component*> { &info, &l1, &remote, &apply }) addAndMakeVisible (c);
+            info.setFont (juce::FontOptions (12.0f));
+            info.setColour (juce::Label::textColourId, tl::col::dim);
+            info.setJustificationType (juce::Justification::topLeft);
+            l1.setText ("Display remoto (IP:porta):", juce::dontSendNotification);
+            setSize (340, 150);
+        }
+        void resized() override
+        {
+            auto r = getLocalBounds().reduced (10);
+            info.setBounds (r.removeFromTop (52));
+            r.removeFromTop (4);
+            auto a = r.removeFromTop (26); l1.setBounds (a.removeFromLeft (170)); remote.setBounds (a);
+            r.removeFromTop (10);
+            apply.setBounds (r.removeFromTop (28));
+        }
+    };
+
+    auto panel = std::make_unique<Panel>();
+    const auto id = processor.getIdentity();
+    auto& hub = *processor.hub;
+    panel->info.setText (juce::String ("Nesta m") + utf8 ("\xc3\xa1") + "quina: UDP " + juce::String (hub.getBusPort())
+                         + (hub.isBusPrimary() ? " (ativo aqui)" : " (em outro programa)")
+                         + "\nCelular/tablet: " + hub.getWebAddressHint()
+                         + "\nDeixe vazio se o Display roda neste computador.", juce::dontSendNotification);
+    panel->remote.setText (id.remoteHost.isEmpty() ? juce::String() : id.remoteHost + ":" + juce::String (id.remotePort));
+    panel->remote.setTextToShowWhenEmpty ("ex.: 192.168.0.20:47800", tl::col::dim);
+
+    auto* raw = panel.get();
+    juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> safe (this);
+    raw->apply.onClick = [safe, raw]
+    {
+        if (safe == nullptr) return;
+        auto id2 = safe->processor.getIdentity();
+        const auto t = raw->remote.getText().trim();
+        id2.remoteHost = t.upToFirstOccurrenceOf (":", false, false).trim();
+        const int port = t.fromFirstOccurrenceOf (":", false, false).getIntValue();
+        id2.remotePort = port > 0 ? port : tl::kDefaultBusPort;
+        safe->processor.setIdentity (id2);
+        if (auto* box = raw->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
+    };
+
+    juce::CallOutBox::launchAsynchronously (std::move (panel), networkButton.getScreenBounds(), nullptr);
 }

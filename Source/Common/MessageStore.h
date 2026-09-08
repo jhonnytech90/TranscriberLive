@@ -149,7 +149,74 @@ namespace tl
             return juce::var (arr);
         }
 
+        /** Modo secundário: aplica o JSON de /state de outro processo (que tem as portas). */
+        void applyStateJson (const juce::String& json)
+        {
+            auto v = juce::JSON::parse (json);
+            auto* o = v.getDynamicObject();
+            if (o == nullptr) return;
+
+            const auto remoteClear = (juce::int64) o->getProperty ("clearSeq");
+            if (remoteClear != lastRemoteClearSeq)
+            {
+                if (lastRemoteClearSeq != 0 || getEntries().empty() == false) clear();
+                lastRemoteClearSeq = remoteClear;
+            }
+
+            std::map<juce::String, bool> flashByChannel;
+            if (auto* parts = o->getProperty ("participants").getArray())
+            {
+                const juce::ScopedLock sl (lock);
+                const auto now = juce::Time::currentTimeMillis();
+                for (auto& pv : *parts)
+                {
+                    auto* po = pv.getDynamicObject(); if (po == nullptr) continue;
+                    auto& p = participants[po->getProperty ("ch").toString()];
+                    p.id = po->getProperty ("ch").toString();
+                    p.name = po->getProperty ("name").toString();
+                    p.colour = juce::Colour::fromString ("ff" + po->getProperty ("color").toString());
+                    p.importance = (int) po->getProperty ("imp");
+                    p.flash = (bool) po->getProperty ("flash");
+                    if ((bool) po->getProperty ("online")) p.lastSeenMs = now;
+                    p.messageCount = (int) po->getProperty ("count");
+                    flashByChannel[p.id] = p.flash;
+                }
+                ++version;
+            }
+
+            if (auto* ents = o->getProperty ("entries").getArray())
+            {
+                for (auto& ev : *ents)
+                {
+                    auto* eo = ev.getDynamicObject(); if (eo == nullptr) continue;
+                    Message m;
+                    m.type = "msg";
+                    m.channelId = eo->getProperty ("ch").toString();
+                    m.name = eo->getProperty ("name").toString();
+                    m.colour = juce::Colour::fromString ("ff" + eo->getProperty ("color").toString());
+                    m.importance = (int) eo->getProperty ("imp");
+                    m.flash = flashByChannel.count (m.channelId) ? flashByChannel[m.channelId] : false;
+                    m.utteranceId = eo->getProperty ("utt").toString();
+                    m.text = eo->getProperty ("text").toString();
+                    m.isFinal = (bool) eo->getProperty ("final");
+                    m.timeMs = (juce::int64) eo->getProperty ("t");
+
+                    // só passa pelo handle() (que dispara flash) se for novo ou mudou
+                    bool changed = true;
+                    {
+                        const juce::ScopedLock sl (lock);
+                        for (auto it = entries.rbegin(); it != entries.rend(); ++it)
+                            if (it->channelId == m.channelId && it->utteranceId == m.utteranceId)
+                            { changed = it->text != m.text || it->isFinal != m.isFinal; break; }
+                    }
+                    if (changed) handle (m);
+                }
+            }
+        }
+
     private:
+        juce::int64 lastRemoteClearSeq = 0;
+
         void clearLocked()
         {
             entries.clear();

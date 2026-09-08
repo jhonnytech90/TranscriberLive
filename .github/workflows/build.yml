@@ -13,11 +13,11 @@ jobs:
         include:
           - os: macos-14
             name: macOS
-            targets: TranscriberLive_VST3 TranscriberLive_AU TranscriberLive_Standalone TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_AU TranscriberLiveDisplay_Standalone
+            targets: TranscriberLive_VST3 TranscriberLive_AU TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_AU TranscriberLiveDisplayApp
             artefacts: build/TranscriberLive_artefacts/Release
           - os: windows-2022
             name: Windows
-            targets: TranscriberLive_VST3 TranscriberLive_Standalone TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_Standalone
+            targets: TranscriberLive_VST3 TranscriberLiveDisplay_VST3 TranscriberLiveDisplayApp
             artefacts: build/TranscriberLive_artefacts/Release
 
     runs-on: ${{ matrix.os }}
@@ -38,3 +38,4 @@ jobs:
           path: |
             build/TranscriberLive_artefacts/Release
             build/TranscriberLiveDisplay_artefacts/Release
+            build/TranscriberLiveDisplayApp_artefacts/Release

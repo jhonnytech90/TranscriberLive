@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include "MessageStore.h"
+#include "SocketSafety.h"
 
 namespace tl
 {
@@ -25,12 +26,14 @@ namespace tl
         bool start (int port)
         {
             stop();
+            ignoreSigpipeOnce();
             listener = std::make_unique<juce::StreamingSocket>();
             if (! listener->createListener (port, "0.0.0.0"))
             {
                 listener.reset();
                 return false;
             }
+            makeSocketSafe (listener->getRawSocketHandle());
             boundPort = port;
             running.store (true);
             startThread();
@@ -58,11 +61,21 @@ namespace tl
         /** IPs locais (para mostrar "abra http://x.x.x.x:porta" na UI). */
         static juce::StringArray getLocalAddresses()
         {
-            juce::StringArray out;
-            for (auto& a : juce::IPAddress::getAllAddresses (false))
-                if (a != juce::IPAddress::local() && ! a.isIPv6 && ! a.toString().startsWith ("169.254"))
-                    out.add (a.toString());
-            return out;
+            static juce::CriticalSection lock;
+            static juce::StringArray cached;
+            static juce::uint32 cachedAt = 0;
+
+            const juce::ScopedLock sl (lock);
+            const auto now = juce::Time::getMillisecondCounter();
+            if (cached.isEmpty() || now - cachedAt > 5000)
+            {
+                cached.clear();
+                for (auto& a : juce::IPAddress::getAllAddresses (false))
+                    if (a != juce::IPAddress::local() && ! a.isIPv6 && ! a.toString().startsWith ("169.254"))
+                        cached.add (a.toString());
+                cachedAt = now;
+            }
+            return cached;
         }
 
     private:
@@ -71,7 +84,11 @@ namespace tl
         {
         public:
             Connection (HttpServer& s, juce::StreamingSocket* sock)
-                : juce::Thread ("TranscriberLive HTTP conn"), server (s), socket (sock) { startThread(); }
+                : juce::Thread ("TranscriberLive HTTP conn"), server (s), socket (sock)
+            {
+                makeSocketSafe (socket->getRawSocketHandle());
+                startThread();
+            }
 
             ~Connection() override { socket->close(); stopThread (2000); }
 
@@ -119,6 +136,7 @@ namespace tl
                 for (auto& e : server.store.getEntries()) arr.add (MessageStore::entryToVar (e));
                 o->setProperty ("entries", juce::var (arr));
                 o->setProperty ("lastSeq", server.store.getLastSeq());
+                o->setProperty ("clearSeq", server.store.getClearSeq());
                 return juce::JSON::toString (juce::var (o), true);
             }
 
@@ -137,7 +155,9 @@ namespace tl
 
             bool writeStr (const juce::String& s)
             {
-                return socket->write (s.toRawUTF8(), (int) s.getNumBytesAsUTF8()) >= 0;
+                if (! socket->isConnected()) return false;
+                const int n = (int) s.getNumBytesAsUTF8();
+                return socket->write (s.toRawUTF8(), n) == n;
             }
 
             void serveEvents()

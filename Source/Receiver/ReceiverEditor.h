@@ -22,20 +22,7 @@ private:
 };
 
 //==============================================================================
-/** Área rolável com as frases transcritas em fonte grande. */
-class TranscriptView : public juce::Component
-{
-public:
-    void setLines (std::vector<TranscriptionEngine::Line> newLines, int fontSize);
-    void paint (juce::Graphics& g) override;
-    int  getPreferredHeight (int width) const;
-
-private:
-    std::vector<TranscriptionEngine::Line> lines;
-    int fontPx = 34;
-};
-
-//==============================================================================
+/** Editor compacto do Receiver. */
 class TranscriberLiveAudioProcessorEditor : public juce::AudioProcessorEditor,
                                             private juce::Timer
 {
@@ -48,47 +35,30 @@ public:
 
 private:
     void timerCallback() override;
-    void chooseModel (bool vad);
-    void refreshTranscript();
-    void updateStatus();
+    void refreshModelList();
+    void applyIdentityFromUi();
+    void loadIdentityToUi();
+    void showNetwork();
 
     TranscriberLiveAudioProcessor& processor;
     tl::DarkLookAndFeel lnf;
 
-    // topo
-    juce::Label        titleLabel, statusLabel, speechLabel;
-    juce::ToggleButton listenButton { "TRANSCREVER" };
+    juce::Label        titleLabel, statusLabel, speechLabel, lastLineLabel;
+    juce::Label        nameLabel, importanceLabel, modelLabel, gateLabel, vadLabel, holdLabel;
+    juce::TextEditor   nameEditor;
+    juce::TextButton   colourButton { "Cor" }, networkButton { "Rede..." };
+    juce::ComboBox     importanceBox, modelBox;
+    juce::ToggleButton flashButton { "Flash" }, partialsButton { "Parciais" };
     LevelMeter         meter;
-    juce::TextButton   modelButton  { "Modelo Whisper..." },
-                       vadButton    { "Modelo VAD..." },
-                       clearButton  { "Limpar" },
-                       fontDownButton { "A-" }, fontUpButton { "A+" };
-
-    // identidade do canal
-    juce::Label        nameLabel, importanceLabel, targetLabel;
-    juce::TextEditor   nameEditor, targetEditor;
-    juce::TextButton   colourButton { "Cor" };
-    juce::ComboBox     importanceBox;
-    juce::ToggleButton flashButton { "Flash no Display" };
-    void applyIdentityFromUi();
-    void loadIdentityToUi();
-
-    // centro
-    juce::Viewport   viewport;
-    TranscriptView   transcript;
-
-    // rodapé
-    juce::Slider     gateSlider, holdSlider, vadSlider;
-    juce::Label      gateLabel, holdLabel, vadLabel;
-    juce::ToggleButton partialsButton { "Mostrar parciais" };
+    juce::Slider       gateSlider, vadSlider, holdSlider;
 
     using APVTS = juce::AudioProcessorValueTreeState;
-    std::unique_ptr<APVTS::SliderAttachment>   gateAttachment, holdAttachment, vadAttachment;
-    std::unique_ptr<APVTS::ButtonAttachment>   partialsAttachment, listenAttachment;
+    std::unique_ptr<APVTS::SliderAttachment> gateAttachment, holdAttachment, vadAttachment;
+    std::unique_ptr<APVTS::ButtonAttachment> partialsAttachment;
 
-    std::unique_ptr<juce::FileChooser> fileChooser;
+    juce::StringArray lastModelList;
+    juce::uint32 lastModelScan = 0;
     int lastLinesVersion = -1;
-    int lastFontSize = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TranscriberLiveAudioProcessorEditor)
 };
