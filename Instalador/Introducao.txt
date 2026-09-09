@@ -1,21 +1,21 @@
-TRANSCRIBER LIVE
-Comunicacao por texto entre o palco e a tecnica, em tempo real.
-Versao 0.4  |  Jhonatan Miikael
+﻿TRANSCRIBER LIVE
+Comunicação por texto entre o palco e a técnica, em tempo real.
+Versão 0.4  |  Jhonatan Miikael
 
 
-O QUE E
+O QUE É
 
-O Transcriber Live escuta o microfone de quem esta no palco e transforma
-a fala em texto na tela da tecnica, na hora. O cantor pede "sobe o retorno
-do violao" no proprio microfone e a mensagem aparece escrita no FOH, sem
+O Transcriber Live escuta o microfone de quem está no palco e transforma
+a fala em texto na tela da técnica, na hora. O cantor pede "sobe o retorno
+do violão" no próprio microfone e a mensagem aparece escrita no FOH, sem
 gesto, sem grito, sem parar o show.
 
-Cada canal vira um participante com nome e cor propria, e as mensagens
+Cada canal vira um participante com nome e cor próprios, e as mensagens
 aparecem como uma conversa. Quem estiver longe da mesa pode acompanhar a
 mesma conversa pelo celular ou tablet, pelo Wi-Fi local.
 
-Tudo roda dentro do seu computador: nada e enviado para a internet e nada
-depende de conexao durante o show.
+Tudo roda dentro do seu computador: nada é enviado para a internet e nada
+depende de conexão durante o show.
 
 
 COMO FUNCIONA
@@ -23,19 +23,20 @@ COMO FUNCIONA
 O sistema tem duas partes:
 
   RECEIVER  - um em cada canal de microfone (cantor, baixo, bateria...).
-              Transcreve a voz falada daquele canal e envia para o Display.
-              Rejeita ruido de palco e vazamento: so a voz falada passa.
+              Transcreve a voz falada daquele canal e envia para o
+              Display. Rejeita ruído de palco e vazamento: só a voz
+              falada passa.
 
-  DISPLAY   - a tela da tecnica, com a conversa em baloes coloridos, lista
-              de participantes, filtro por pessoa e flash na tela quando
-              chega mensagem. Funciona como plugin ou como aplicativo, e
-              ainda serve a pagina para celular e tablet.
+  DISPLAY   - a tela da técnica, com a conversa em balões coloridos,
+              lista de participantes, filtro por pessoa e flash na tela
+              quando chega mensagem. Funciona como plugin ou como
+              aplicativo, e ainda serve a página para celular e tablet.
 
-O audio passa intacto pelos dois. Os plugins apenas escutam - nunca alteram
+O áudio passa intacto pelos dois. Os plugins apenas escutam: nunca alteram
 o som e nunca deixam um canal mudo.
 
 
-O QUE SERA INSTALADO
+O QUE SERÁ INSTALADO
 
   - Transcriber Live Receiver (VST3 e AU)
   - Transcriber Live Display  (VST3, AU e aplicativo)
@@ -45,48 +46,51 @@ O QUE SERA INSTALADO
 
 REQUISITOS
 
-  - macOS 11 ou mais recente (Apple Silicon ou Intel), ou Windows 10/11 64 bits
-  - Um host que aceite VST3 ou AU de terceiros:
-    Waves SuperRack Performer V14 ou mais novo, REAPER, Live Professor,
-    Logic, MainStage e similares.
-    Atencao: o SuperRack SoundGrid roda apenas plugins Waves e nao serve.
-  - 4 GB de espaco livre e, de preferencia, 8 GB de memoria RAM
-  - Wi-Fi ou cabo de rede, apenas se voce quiser acompanhar pelo celular
+  - macOS 11 ou mais recente (Apple Silicon ou Intel),
+    ou Windows 10/11 de 64 bits
+  - Um host que aceite VST3 ou AU de terceiros: Waves SuperRack Performer
+    V14 ou mais novo, REAPER, Live Professor, Logic, MainStage e similares.
+    Atenção: o SuperRack SoundGrid roda apenas plugins Waves e não serve.
+  - 4 GB de espaço livre e, de preferência, 8 GB de memória RAM
+  - Wi-Fi ou cabo de rede, apenas se quiser acompanhar pelo celular
 
 
 DEPOIS DE INSTALAR
 
   1. Abra o seu host e mande procurar plugins novos (rescan).
-  2. Insira o Receiver no canal do microfone. Na primeira vez ele mostra o
-     ID desta maquina - envie esse ID junto com seu nome e e-mail para
-     receber sua chave de ativacao, cole no campo indicado e clique Ativar.
+
+  2. Insira o Receiver no canal do microfone. Na primeira vez ele mostra
+     o ID desta máquina: envie esse ID junto com seu nome e e-mail para
+     receber sua chave de ativação, cole no campo indicado e clique
+     em Ativar.
+
   3. Insira o Display em qualquer canal, ou abra o aplicativo Display.
-     O endereco para o celular aparece na propria tela do Display.
+     O endereço para o celular aparece na própria tela do Display.
 
 Antes do primeiro show, reserve alguns minutos para ajustar o Gate com o
-microfone aberto e a banda tocando: e esse ajuste que separa a fala do
+microfone aberto e a banda tocando: é esse ajuste que separa a fala do
 vazamento de palco.
 
 
-SOBRE A LICENCA
+SOBRE A LICENÇA
 
-O Receiver precisa de uma chave de ativacao, valida para um computador e
-sem prazo de validade. A verificacao e feita dentro do proprio computador,
+O Receiver precisa de uma chave de ativação, válida para um computador e
+sem prazo de validade. A verificação é feita dentro do próprio computador,
 sem internet.
 
-O Display e a pagina do celular sao livres: o computador da tecnica pode
+O Display e a página do celular são livres: o computador da técnica pode
 usar o Display sem custo.
 
-Sem chave o Receiver nao transcreve, mas o audio continua passando normal-
-mente pelo canal.
+Sem chave o Receiver não transcreve, mas o áudio continua passando
+normalmente pelo canal.
 
 
-UMA OBSERVACAO HONESTA
+UMA OBSERVAÇÃO HONESTA
 
-O sistema foi feito para transcrever fala. Canto e musica com voz dentro do
-microfone tambem sao voz para qualquer detector, e o programa vai tentar
-transcrever. Na pratica: deixe o Receiver ativo nas passagens faladas e use
-o bypass do host durante as musicas.
+O sistema foi feito para transcrever fala. Canto e música com voz dentro
+do microfone também são voz para qualquer detector, e o programa vai
+tentar transcrever. Na prática: deixe o Receiver ativo nas passagens
+faladas e use o bypass do host durante as músicas.
 
 
 SUPORTE
