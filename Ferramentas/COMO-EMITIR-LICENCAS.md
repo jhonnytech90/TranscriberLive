@@ -104,3 +104,18 @@ python3 licenca.py init --forcar
 Isso gera um par novo e **invalida todas as licenças já vendidas** — você teria que reemitir
 todas e publicar uma versão nova do plugin com a chave pública nova. Só faça isso se
 desconfiar que a chave privada vazou.
+
+## Emitir sem o Mac ligado (pelo celular)
+
+Existe um segundo caminho: o workflow **Emitir licença** no GitHub Actions. Você
+abre o app do GitHub no celular, preenche ID da máquina, nome, e-mail e
+validade, e a licença sai em ~30 segundos — como artefato do run e, se você
+configurar, direto no seu Telegram.
+
+Os dois caminhos usam a mesma chave e produzem o mesmo formato de licença, então
+dá para alternar à vontade: o gerador com interface quando estiver no Mac, o
+Actions quando estiver na estrada.
+
+A configuração (guardar a chave como segredo, exigir aprovação, ligar o
+Telegram) e o que isso significa em termos de segurança estão em
+**EMITIR-PELO-GITHUB.md**.

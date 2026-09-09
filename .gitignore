@@ -22,3 +22,10 @@ Instalador/scripts/TranscriberLive-payload.zip
 # instalador Windows
 Instalador/Windows/saida/
 Instalador/Windows/binarios/
+
+# licencas emitidas pelo Actions ficam so no artefato, nunca no repositorio
+/saida/
+
+# o historico de vendas (so metadados) e versionado de proposito
+!registro/
+!registro/licencas-emitidas.csv
