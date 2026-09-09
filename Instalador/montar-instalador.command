@@ -115,18 +115,41 @@ cinza "  scripts/TranscriberLive-payload.zip  ($(/usr/bin/du -h scripts/Transcri
 echo ""
 echo "Gerando o instalador..."
 /bin/mkdir -p "$SAIDA" recursos
-[ -f Introducao.txt ] && /bin/cp Introducao.txt recursos/
-[ -f Licenca-de-uso.txt ] && /bin/cp Licenca-de-uso.txt recursos/
+[ -f Introducao.txt ]      && /bin/cp Introducao.txt recursos/
+[ -f Licenca-de-uso.txt ]  && /bin/cp Licenca-de-uso.txt recursos/
+[ -f capa.png ]            && /bin/cp capa.png recursos/
+[ -f capa-dark.png ]       && /bin/cp capa-dark.png recursos/
 
-/usr/bin/pkgbuild \
-    --identifier "$ID.core" \
-    --version "$VERSAO" \
-    --nopayload \
-    --scripts scripts \
-    --install-location / \
-    "$SAIDA/core.pkg" >/dev/null || { verm "pkgbuild falhou."; read -r -p "Enter..." _; exit 1; }
+# Modo do pacote:
+#   payload (padrao) — o zip e instalado em /Applications e o postinstall move/extrai.
+#                      /Applications e permitido, entao nao da o erro do volume do sistema.
+#                      E o modo mais parecido com o instalador do SpotifyDownload.
+#   TL_SEM_PAYLOAD=1 — pacote sem payload nenhum, o zip viaja dentro de scripts/.
+if [ "${TL_SEM_PAYLOAD:-0}" = "1" ]; then
+    cinza "  modo: sem payload (zip dentro de scripts/)"
+    /usr/bin/pkgbuild \
+        --identifier "$ID.core" \
+        --version "$VERSAO" \
+        --nopayload \
+        --scripts scripts \
+        --install-location / \
+        "$SAIDA/core.pkg" >/dev/null || { verm "pkgbuild falhou."; read -r -p "Enter..." _; exit 1; }
+else
+    cinza "  modo: payload em /Applications (o postinstall move e extrai)"
+    ROOT="$(/usr/bin/mktemp -d)"
+    /bin/mkdir -p "$ROOT/Applications"
+    /bin/cp scripts/TranscriberLive-payload.zip "$ROOT/Applications/TranscriberLive-payload.zip"
+    /usr/bin/pkgbuild \
+        --identifier "$ID.core" \
+        --version "$VERSAO" \
+        --root "$ROOT" \
+        --scripts scripts \
+        --install-location / \
+        "$SAIDA/core.pkg" >/dev/null || { verm "pkgbuild falhou."; /bin/rm -rf "$ROOT"; read -r -p "Enter..." _; exit 1; }
+    /bin/rm -rf "$ROOT"
+fi
 
-# distribution.xml: tela de introducao + exigencia de macOS 11
+# distribution.xml: capa lateral + tela de introducao + exigencia de macOS 11
 {
 cat <<XML
 <?xml version="1.0" encoding="utf-8"?>
@@ -134,6 +157,11 @@ cat <<XML
     <title>Transcriber Live</title>
     <organization>$ID</organization>
 XML
+# capa lateral (o painel da esquerda da janela do instalador)
+[ -f recursos/capa.png ] && \
+    echo '    <background file="capa.png" mime-type="image/png" alignment="bottomleft" scaling="proportional"/>'
+[ -f recursos/capa-dark.png ] && \
+    echo '    <background-darkAqua file="capa-dark.png" mime-type="image/png" alignment="bottomleft" scaling="proportional"/>'
 [ -f recursos/Introducao.txt ]     && echo '    <welcome file="Introducao.txt" mime-type="text/plain"/>'
 [ -f recursos/Licenca-de-uso.txt ] && echo '    <license file="Licenca-de-uso.txt" mime-type="text/plain"/>'
 cat <<XML

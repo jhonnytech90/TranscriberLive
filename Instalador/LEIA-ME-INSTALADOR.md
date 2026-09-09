@@ -7,19 +7,53 @@ do usuário (`~/Library/Application Support`, por exemplo). O instalador roda co
 antes de qualquer sessão de usuário, então "a home do usuário" não existe para ele —
 e o macOS bloqueia o pacote inteiro em vez de adivinhar.
 
-A solução é a que você já pensou, e é a que os plugins comerciais usam: **o pacote não
-instala nada por payload**. Ele carrega apenas um zip e um script; o script descompacta
-num temporário e move cada coisa para o lugar certo, incluindo a pasta do usuário.
+A solução é a mesma do seu instalador do SpotifyDownload: **o payload leva só um zip
+para uma pasta permitida** (`/Applications`), e o `postinstall` move esse zip para um
+temporário, descompacta e leva cada coisa para o lugar certo — inclusive a pasta do
+usuário, que o payload não consegue tocar. No fim o zip é apagado, então não sobra nada
+em `/Applications`.
+
+Fluxo:
+
+```
+payload  ->  /Applications/TranscriberLive-payload.zip
+postinstall -> move para /private/tmp, extrai e distribui:
+                 VST3/          -> /Library/Audio/Plug-Ins/VST3
+                 Components/    -> /Library/Audio/Plug-Ins/Components
+                 Applications/  -> /Applications
+                 models/        -> ~/Library/Application Support/TranscriberLive/models
+             -> apaga o zip
+```
 
 ## Arquivos aqui
 
 | Arquivo | Para que serve |
 |---|---|
 | `montar-instalador.command` | **duplo clique** — monta o payload e gera o `.pkg` inteiro |
-| `scripts/postinstall` | o script que copia tudo depois da instalação |
+| `scripts/postinstall` | o script que distribui tudo depois da instalação |
+| `postinstall-minimo.sh` | a mesma lógica em 60 linhas, só para depurar na mão |
 | `Introducao.txt` | tela de introdução do instalador |
+| `capa.png` | **capa lateral** do instalador (modo claro) |
+| `capa-dark.png` | capa lateral no modo escuro |
 | `binarios/` | *(você cria)* onde ficam os `.vst3`, `.component` e `.app` |
 | `modelos/` | *(você cria, opcional)* `ggml-*.bin` para já sair instalado |
+
+## A capa lateral
+
+O painel da esquerda da janela do instalador é o elemento `<background>` do
+`distribution.xml`, e o `montar-instalador.command` já o gera para você: basta os
+arquivos `capa.png` e `capa-dark.png` existirem aqui.
+
+- `capa.png` — arte escura sobre fundo transparente, para o modo claro do macOS
+- `capa-dark.png` — a versão esmaecida/clara, para o modo escuro
+
+As duas já estão prontas aqui, em 700 × 1400 px (PNG com transparência). O painel real
+tem cerca de 165 × 380 pt, e o alinhamento usado é `bottomleft` com escala
+`proportional` — ou seja, a arte encosta embaixo à esquerda e é reduzida sem distorcer.
+Por isso o logo em cima e o QR embaixo funcionam bem, e o miolo vazio some.
+
+Se quiser trocar a arte, mantenha a proporção perto de 1:2 e deixe transparência no
+lugar do fundo: fundo branco chapado aparece como um retângulo branco no modo escuro.
 
 ## O caminho automático (recomendado)
 
@@ -35,14 +69,27 @@ que já vêm no macOS.
 
 ## Se preferir usar o Packages (interface gráfica)
 
+Agora fica simples, porque o zip vai por payload:
+
 1. Novo projeto → **Raw Package**.
-2. Aba **Payload**: deixe **vazia**. É isso que resolve o erro.
+2. Aba **Payload**: em `/Applications`, arraste o `scripts/TranscriberLive-payload.zip`
+   (rode o `montar-instalador.command` uma vez para gerá-lo). **Só o zip**, nada dentro
+   de `~/Library` — é isso que resolve o erro.
 3. Aba **Scripts** → *Post-installation*: escolha `scripts/postinstall`.
-4. Aba **Scripts** → *Additional Resources*: arraste o `TranscriberLive-payload.zip`
-   (rode o `montar-instalador.command` uma vez só para gerar o zip; ele para de ser
-   necessário depois que o pkg é gerado pelo Packages).
-5. Aba **Settings**: identificador `com.jhonatanmiikael.transcriberlive`, versão 0.4,
+4. Aba **Settings**: identificador `com.jhonatanmiikael.transcriberlive`, versão 0.4,
    "Require admin password" ligado.
+5. Aba **Presentation** → *Background*: escolha `capa.png` (e `capa-dark.png` no campo
+   do modo escuro), alinhamento **Bottom Left**, escala **Proportional**.
+   Em *Introduction*, aponte o `Introducao.txt`.
+
+Se por algum motivo você preferir o pacote **sem payload nenhum** (o zip viajando dentro
+de `scripts/`), rode:
+
+```bash
+TL_SEM_PAYLOAD=1 ./montar-instalador.command
+```
+
+O `postinstall` procura o zip nos dois lugares, então funciona igual nos dois modos.
 
 ## O que o script instala, e onde
 

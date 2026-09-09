@@ -72,17 +72,29 @@ echo "home     : $CASA"
 # 2) numa pasta temporaria, caso voce prefira instalar o zip por payload
 AQUI="$(cd "$(dirname "$0")" && pwd)"
 ZIP=""
+APAGAR_ZIP=0   # 1 = o zip veio pelo payload e deve sair do disco no fim
+
 for candidato in \
+    "$RAIZ/Applications/TranscriberLive-payload.zip" \
+    "$RAIZ/Library/Application Support/TranscriberLive-payload.zip" \
     "$AQUI/TranscriberLive-payload.zip" \
     "$AQUI/../TranscriberLive-payload.zip" \
     "$TMPBASE/TranscriberLive-Install/TranscriberLive-payload.zip" \
-    "/Library/Application Support/TranscriberLive/_install/TranscriberLive-payload.zip"
+    "$RAIZ/Library/Application Support/TranscriberLive/_install/TranscriberLive-payload.zip"
 do
-    if [ -f "$candidato" ]; then ZIP="$candidato"; break; fi
+    if [ -f "$candidato" ]; then
+        ZIP="$candidato"
+        # se o zip foi instalado por payload (esta em /Applications ou em
+        # Application Support), ele e temporario: sai do disco no final.
+        case "$candidato" in
+            "$RAIZ/Applications/"*|"$RAIZ/Library/Application Support/TranscriberLive-payload.zip") APAGAR_ZIP=1;;
+        esac
+        break
+    fi
 done
 
 if [ -z "$ZIP" ]; then
-    erro "nao encontrei TranscriberLive-payload.zip (procurei junto do script e em $TMPBASE/TranscriberLive-Install)."
+    erro "nao encontrei TranscriberLive-payload.zip (procurei em /Applications, junto do script e em $TMPBASE/TranscriberLive-Install)."
     exit 1
 fi
 echo "payload  : $ZIP ($(/usr/bin/du -h "$ZIP" | /usr/bin/awk '{print $1}'))"
@@ -207,6 +219,19 @@ if [ -d "$TMP/models" ]; then
 else
     echo "  (sem modelos no payload — o usuario baixa depois)"
 fi
+
+# ---------------------------------------------------------------- limpeza do payload
+# o zip so existe para atravessar o instalador; depois de distribuido, sai do disco
+if [ "$APAGAR_ZIP" -eq 1 ]; then
+    echo ""
+    if /bin/rm -f "$ZIP"; then
+        echo "payload temporario removido: $ZIP"
+    else
+        aviso "nao consegui remover $ZIP — pode apagar na mao, e so um arquivo temporario."
+    fi
+fi
+# lixo que o Finder/zip do macOS deixa
+/bin/rm -rf "$RAIZ/Applications/__MACOSX" "$RAIZ/Applications/.DS_Store" 2>/dev/null
 
 # ---------------------------------------------------------------- finalizacao
 echo ""
