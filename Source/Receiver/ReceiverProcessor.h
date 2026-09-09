@@ -51,6 +51,10 @@ public:
 
     float getInputLevelDb() const noexcept   { return inputLevelDb.load(); }
 
+    /** Vazio = tudo certo. Preenchido = alguma etapa da inicializacao falhou
+        (o plugin continua carregado e o audio passa, mas nao transcreve). */
+    juce::String getInitError() const        { return initError; }
+
     //-- Licença (sem chave válida o plugin não transcreve; o áudio passa intacto) --
     bool            isLicensed() const noexcept   { return licensed.load(); }
     tl::LicenseInfo getLicenseInfo() const        { const juce::ScopedLock sl (licenseLock); return licenseInfo; }
@@ -94,6 +98,8 @@ private:
     void autoSelectModel();
     void loadModels();
     void refreshLicense();
+
+    juce::String initError;
 
     std::atomic<bool> licensed { false };
     mutable juce::CriticalSection licenseLock;

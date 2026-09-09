@@ -40,6 +40,28 @@ set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS      OFF CACHE BOOL "" FORCE)
 set(GGML_NATIVE            OFF CACHE BOOL "" FORCE)   # binário portátil (não otimiza só p/ a CPU de build)
+
+# ---------------------------------------------------------------------------
+# Nível de SIMD do ggml (x86)
+# ---------------------------------------------------------------------------
+# ATENÇÃO: GGML_NATIVE=OFF **não** significa "compatível com tudo". O ggml ainda
+# liga AVX/AVX2/FMA/F16C por conta própria, e no MSVC isso vira /arch:AVX2 para o
+# arquivo inteiro. Numa máquina sem AVX2 o resultado é uma "instrução ilegal" no
+# instante em que o plugin é carregado — o host abre e fecha a janela sem
+# mensagem nenhuma. O Display não usa o ggml, então continua abrindo normal: é
+# exatamente esse o sintoma.
+#
+# TRANSCRIBER_PORTABLE_CPU=ON  -> roda em qualquer x86-64 (padrão, para vender)
+# TRANSCRIBER_PORTABLE_CPU=OFF -> deixa o ggml usar AVX2/FMA (mais rápido, exige CPU 2013+)
+option(TRANSCRIBER_PORTABLE_CPU "Compila o ggml sem AVX/AVX2 (roda em qualquer x86-64)" ON)
+
+if(TRANSCRIBER_PORTABLE_CPU AND NOT APPLE)
+    foreach(f GGML_AVX GGML_AVX2 GGML_AVX512 GGML_AVX_VNNI GGML_FMA GGML_F16C
+              GGML_BMI2 GGML_AVX512_VBMI GGML_AVX512_VNNI GGML_AVX512_BF16)
+        set(${f} OFF CACHE BOOL "" FORCE)
+    endforeach()
+endif()
+
 if(APPLE)
     set(GGML_METAL ON  CACHE BOOL "" FORCE)           # GPU Apple Silicon
     set(GGML_METAL_EMBED_LIBRARY ON CACHE BOOL "" FORCE)
@@ -60,6 +82,14 @@ endif()
 # Plugins: Receiver (um por canal) e Display (conversa) + app Display (sem áudio)
 # ---------------------------------------------------------------------------
 option(TRANSCRIBER_COPY_PLUGIN "Copia os plugins p/ a pasta de plugins do sistema após o build" ON)
+
+# LTO: no MSVC o /GL + /LTCG junto com as libs estáticas do ggml já produziu
+# miscompilação em plugin de áudio. O ganho não paga o risco.
+if(MSVC)
+    set(TL_LTO "")
+else()
+    set(TL_LTO juce::juce_recommended_lto_flags)
+endif()
 
 set(TL_COMPANY      "Jhonatan Miikael")
 set(TL_BUNDLE_BASE  "com.jhonatanmiikael")
@@ -111,7 +141,7 @@ target_link_libraries(TranscriberLive PRIVATE
     whisper
     PUBLIC
     juce::juce_recommended_config_flags
-    juce::juce_recommended_lto_flags
+    ${TL_LTO}
     juce::juce_recommended_warning_flags)
 
 # ---- Display (plugin) ----
@@ -146,7 +176,7 @@ target_link_libraries(TranscriberLiveDisplay PRIVATE
     juce::juce_cryptography
     PUBLIC
     juce::juce_recommended_config_flags
-    juce::juce_recommended_lto_flags
+    ${TL_LTO}
     juce::juce_recommended_warning_flags)
 
 # ---- Display (app Standalone, sem dispositivo de áudio) ----
@@ -172,7 +202,7 @@ target_link_libraries(TranscriberLiveDisplayApp PRIVATE
     juce::juce_gui_extra
     PUBLIC
     juce::juce_recommended_config_flags
-    juce::juce_recommended_lto_flags
+    ${TL_LTO}
     juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------

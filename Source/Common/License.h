@@ -50,7 +50,7 @@ namespace tl
         /** Remove a licença instalada. */
         static void uninstall();
 
-    private:
+        /** Reduz um identificador cru do sistema ao formato TL-XXXX-XXXX-XXXX. */
         static juce::String normalise (const juce::String& id);
     };
 }

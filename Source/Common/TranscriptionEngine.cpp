@@ -113,7 +113,11 @@ void TranscriptionEngine::handleModelRequests()
 
         auto cparams = whisper_context_default_params();
         cparams.use_gpu    = true;       // Metal no macOS; ignorado se indisponível
-        cparams.flash_attn = true;
+       #if JUCE_MAC
+        cparams.flash_attn = true;       // só com Metal; no backend de CPU pode abortar
+       #else
+        cparams.flash_attn = false;
+       #endif
 
         ctx = whisper_init_from_file_with_params (file.getFullPathName().toRawUTF8(), cparams);
 

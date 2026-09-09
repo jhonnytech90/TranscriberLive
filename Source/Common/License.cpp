@@ -1,5 +1,6 @@
 #include "License.h"
 #include "Hub.h"
+#include "Trace.h"
 
 namespace tl
 {
@@ -18,32 +19,85 @@ namespace tl
         return "TL-" + hex.substring (0, 4) + "-" + hex.substring (4, 8) + "-" + hex.substring (8, 12);
     }
 
+    // Consulta ao hardware: SMBIOS, volume do disco, placas de rede. No Windows
+    // isso passa por GetSystemFirmwareTable / GetAdaptersAddresses, que em maquina
+    // ou VM com firmware estranho pode devolver lixo. Por isso:
+    //   - roda UMA vez por processo (resultado em cache),
+    //   - cada consulta e isolada, uma falha nao derruba as outras,
+    //   - se tudo falhar, cai num ID derivado do nome da maquina + usuario.
+    // Sem isso, uma excecao aqui sobe pelo construtor do editor e o host fecha a
+    // janela do plugin (ou cai junto).
+    static juce::StringArray computeMachineIds()
+    {
+        using Flags = juce::SystemStats::MachineIdFlags;
+        juce::StringArray raw;
+
+        auto tentar = [&raw] (const char* etiqueta, auto&& fn)
+        {
+            TL_TRACE (juce::String ("machine-id: consultando ") + etiqueta);
+            try
+            {
+                fn();
+                TL_TRACE (juce::String ("machine-id: ") + etiqueta + " ok");
+            }
+            catch (...)
+            {
+                TL_TRACE (juce::String ("machine-id: ") + etiqueta + " FALHOU (ignorado)");
+            }
+        };
+
+        tentar ("uniqueDeviceID", [&raw]
+        {
+            const auto s = juce::SystemStats::getUniqueDeviceID();
+            if (s.isNotEmpty()) raw.add (s);
+        });
+
+        // um flag por vez: se um deles explodir, os outros ainda valem
+        for (auto flag : { Flags::uniqueId, Flags::legacyUniqueId, Flags::fileSystemId, Flags::macAddresses })
+        {
+            tentar (flag == Flags::uniqueId       ? "uniqueId"
+                  : flag == Flags::legacyUniqueId ? "legacyUniqueId"
+                  : flag == Flags::fileSystemId   ? "fileSystemId"
+                                                  : "macAddresses",
+                    [&raw, flag]
+                    {
+                        for (auto& id : juce::SystemStats::getMachineIdentifiers (flag))
+                            if (id.isNotEmpty()) raw.addIfNotAlreadyThere (id);
+                    });
+        }
+
+        juce::StringArray out;
+        for (auto& id : raw)
+            out.addIfNotAlreadyThere (License::normalise (id));
+
+        if (out.isEmpty())
+        {
+            // ultimo recurso: nao e ideal (muda se a maquina for renomeada), mas
+            // e melhor do que nao conseguir ativar de jeito nenhum.
+            TL_TRACE ("machine-id: nenhuma fonte de hardware respondeu — usando fallback");
+            out.add (License::normalise ("fallback:" + juce::SystemStats::getComputerName()
+                                         + ":" + juce::SystemStats::getFullUserName()));
+        }
+
+        TL_TRACE ("machine-id: " + out.joinIntoString (", "));
+        return out;
+    }
+
+    static const juce::StringArray& cachedMachineIds()
+    {
+        static const juce::StringArray ids = computeMachineIds();
+        return ids;
+    }
+
     juce::String License::getMachineId()
     {
-        const auto unique = juce::SystemStats::getUniqueDeviceID();
-        if (unique.isNotEmpty())
-            return normalise (unique);
-
-        const auto ids = getAllMachineIds();
+        const auto& ids = cachedMachineIds();
         return ids.isEmpty() ? juce::String ("TL-0000-0000-0000") : ids[0];
     }
 
     juce::StringArray License::getAllMachineIds()
     {
-        using Flags = juce::SystemStats::MachineIdFlags;
-        const auto all = (Flags) ((int) Flags::uniqueId | (int) Flags::legacyUniqueId
-                                  | (int) Flags::fileSystemId | (int) Flags::macAddresses);
-
-        juce::StringArray out;
-        const auto unique = juce::SystemStats::getUniqueDeviceID();
-        if (unique.isNotEmpty())
-            out.add (normalise (unique));
-
-        for (auto& id : juce::SystemStats::getMachineIdentifiers (all))
-            if (id.isNotEmpty())
-                out.addIfNotAlreadyThere (normalise (id));
-
-        return out;
+        return cachedMachineIds();
     }
 
     juce::File License::getLicenseFile()

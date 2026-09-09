@@ -1,4 +1,5 @@
 #include "ReceiverEditor.h"
+#include "Common/Trace.h"
 
 namespace
 {
@@ -37,6 +38,7 @@ void LevelMeter::paint (juce::Graphics& g)
 TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (TranscriberLiveAudioProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
+    TL_TRACE ("--- editor: construindo ---");
     setLookAndFeel (&lnf);
     setSize (680, 352);
 
@@ -136,7 +138,7 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
             processor.selectModel (name);
     };
     addAndMakeVisible (modelBox);
-    refreshModelList();
+    { TL_TRACE_STEP ("editor: lista de modelos"); refreshModelList(); }
 
     // ---- medidor + knobs ---------------------------------------------------------
     addAndMakeVisible (meter);
@@ -162,9 +164,14 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     holdAttachment     = std::make_unique<APVTS::SliderAttachment> (apvts, TranscriberLiveAudioProcessor::kParamHold,     holdSlider);
     partialsAttachment = std::make_unique<APVTS::ButtonAttachment> (apvts, TranscriberLiveAudioProcessor::kParamPartials, partialsButton);
 
-    loadIdentityToUi();
-    refreshLicenseUi();
+    { TL_TRACE_STEP ("editor: identidade"); loadIdentityToUi(); }
+    { TL_TRACE_STEP ("editor: painel de licenca"); refreshLicenseUi(); }
+
+    if (processor.getInitError().isNotEmpty())
+        statusLabel.setText ("Falha na inicializacao: " + processor.getInitError(), juce::dontSendNotification);
+
     startTimerHz (15);
+    TL_TRACE ("--- editor: pronto ---");
 }
 
 TranscriberLiveAudioProcessorEditor::~TranscriberLiveAudioProcessorEditor() { setLookAndFeel (nullptr); }

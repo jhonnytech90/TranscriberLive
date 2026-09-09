@@ -1,5 +1,6 @@
 #include "ReceiverProcessor.h"
 #include "ReceiverEditor.h"
+#include "Common/Trace.h"
 
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout TranscriberLiveAudioProcessor::createParameterLayout()
@@ -34,21 +35,48 @@ TranscriberLiveAudioProcessor::TranscriberLiveAudioProcessor()
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "STATE", createParameterLayout())
 {
+    TL_TRACE ("=== Receiver: criando instancia ===");
+    TL_TRACE (juce::String ("host: ") + juce::PluginHostType().getHostDescription()
+              + "  |  SO: " + juce::SystemStats::getOperatingSystemName()
+              + "  |  CPU: " + juce::SystemStats::getCpuModel()
+              + juce::String (" | SSE4.2=") + (juce::SystemStats::hasSSE42() ? "1" : "0")
+              + juce::String (" AVX=")      + (juce::SystemStats::hasAVX()   ? "1" : "0")
+              + juce::String (" AVX2=")     + (juce::SystemStats::hasAVX2()  ? "1" : "0")
+              + juce::String (" FMA=")      + (juce::SystemStats::hasFMA3()  ? "1" : "0"));
+
     gateParam     = apvts.getRawParameterValue (kParamGate);
     holdParam     = apvts.getRawParameterValue (kParamHold);
     vadSensParam  = apvts.getRawParameterValue (kParamVadSens);
     partialsParam = apvts.getRawParameterValue (kParamPartials);
 
-    tl::Hub::getModelsDir().createDirectory();
-    autoSelectModel();
-    refreshLicense();          // só carrega o modelo se houver licença válida
-    pushSettingsToEngine();
+    // Nenhuma etapa daqui pode derrubar o host: um plugin que joga excecao no
+    // construtor faz o host fechar a janela (ou fechar junto).
+    try
+    {
+        { TL_TRACE_STEP ("pasta de modelos");   tl::Hub::getModelsDir().createDirectory(); }
+        { TL_TRACE_STEP ("varredura de modelos"); autoSelectModel(); }
+        { TL_TRACE_STEP ("licenca");            refreshLicense(); }
+        { TL_TRACE_STEP ("settings do motor");  pushSettingsToEngine(); }
 
-    identity.channelId = juce::Uuid().toString();
-    localBus.setTarget ("127.0.0.1", hub->getBusPort());
-    engine.onLine = [this] (const TranscriptionEngine::Line& l) { sendLine (l); };
+        identity.channelId = juce::Uuid().toString();
 
-    startTimer (2000);
+        { TL_TRACE_STEP ("hub (rede)");         localBus.setTarget ("127.0.0.1", hub->getBusPort()); }
+
+        engine.onLine = [this] (const TranscriptionEngine::Line& l) { sendLine (l); };
+        startTimer (2000);
+    }
+    catch (const std::exception& e)
+    {
+        TL_TRACE (juce::String ("EXCECAO no construtor: ") + e.what());
+        initError = e.what();
+    }
+    catch (...)
+    {
+        TL_TRACE ("EXCECAO desconhecida no construtor");
+        initError = "erro desconhecido na inicializacao";
+    }
+
+    TL_TRACE ("=== Receiver: instancia criada ===");
 }
 
 TranscriberLiveAudioProcessor::~TranscriberLiveAudioProcessor()
@@ -321,6 +349,7 @@ void TranscriberLiveAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
 //==============================================================================
 juce::AudioProcessorEditor* TranscriberLiveAudioProcessor::createEditor()
 {
+    TL_TRACE_STEP ("createEditor");
     return new TranscriberLiveAudioProcessorEditor (*this);
 }
 
