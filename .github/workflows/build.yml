@@ -39,3 +39,41 @@ jobs:
             build/TranscriberLive_artefacts/Release
             build/TranscriberLiveDisplay_artefacts/Release
             build/TranscriberLiveDisplayApp_artefacts/Release
+
+  # ---------------------------------------------------------------------------
+  # Instalador do Windows (.exe unico, com download dos modelos)
+  # ---------------------------------------------------------------------------
+  installer-windows:
+    needs: build
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Baixa os binarios do Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: TranscriberLive-Windows
+          path: binarios
+
+      - name: Confere o que chegou
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse -Depth 4 binarios |
+            Where-Object { $_.Name -like "*.vst3" -or $_.Name -like "*.exe" } |
+            Select-Object -ExpandProperty FullName
+
+      - name: Instala o Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Monta o instalador
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "/DBIN=$(Resolve-Path binarios)" Instalador\Windows\TranscriberLive.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC falhou ($LASTEXITCODE)" }
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: TranscriberLive-Windows-Setup
+          path: Instalador/Windows/saida/*.exe

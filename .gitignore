@@ -18,3 +18,7 @@ Instalador/modelos/
 Instalador/saida/
 Instalador/recursos/
 Instalador/scripts/TranscriberLive-payload.zip
+
+# instalador Windows
+Instalador/Windows/saida/
+Instalador/Windows/binarios/
