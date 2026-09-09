@@ -173,10 +173,32 @@ instalar() {
 # licenca e jogar mais um ggml-*.bin na pasta sem precisar de sudo.
 permissoes_dados() {
     [ -n "$RAIZ" ] && return 0
-    base="$RAIZ/Library/Application Support/TranscriberLive"
-    [ -d "$base" ] || return 0
-    /usr/sbin/chown -R root:admin "$base" 2>/dev/null
-    /bin/chmod -R ug+rwX,o+rX "$base" 2>/dev/null
+
+    # 1) pasta do sistema (modelos): root:admin, gravavel pelo grupo admin
+    base="/Library/Application Support/TranscriberLive"
+    if [ -d "$base" ]; then
+        /usr/sbin/chown -R root:admin "$base" 2>/dev/null
+        /bin/chmod -R ug+rwX,o+rX "$base" 2>/dev/null
+    fi
+
+    # 2) pasta do USUARIO — e aqui que o plugin grava a licenca.
+    #
+    # Este script roda como root. Se qualquer coisa criar essa pasta antes do
+    # usuario (uma versao anterior do instalador criava, e o mkdir do root deixa
+    # a pasta como root:staff sem escrita para o dono da home), o plugin verifica
+    # a licenca, tenta gravar, falha em silencio e volta a dizer "nenhuma licenca
+    # instalada nesta maquina". Foi exatamente o que aconteceu na v0.4.
+    #
+    # Nao criamos a pasta aqui de proposito: o plugin cria sozinho, com o dono
+    # certo. So consertamos se ela ja existir errada.
+    if [ -n "$USUARIO" ] && [ "$USUARIO" != "root" ] && [ -d "$CASA/Library/Application Support/TranscriberLive" ]; then
+        dono_atual=$(/usr/bin/stat -f%Su "$CASA/Library/Application Support/TranscriberLive" 2>/dev/null)
+        if [ "$dono_atual" != "$USUARIO" ]; then
+            aviso "a pasta de dados do usuario estava como '$dono_atual' — devolvendo para $USUARIO"
+        fi
+        /usr/sbin/chown -R "$USUARIO" "$CASA/Library/Application Support/TranscriberLive" 2>/dev/null
+        /bin/chmod -R u+rwX "$CASA/Library/Application Support/TranscriberLive" 2>/dev/null
+    fi
 }
 
 # ---------------------------------------------------------------- plugins e app
@@ -234,7 +256,7 @@ else
     echo "  (sem modelos neste pacote — os escolhidos sao baixados pelos sub-pacotes)"
 fi
 
-/bin/mkdir -p "$DEST_MODELOS"
+/bin/mkdir -p "$DEST_MODELOS"   # so a do sistema; a do usuario o plugin cria
 permissoes_dados
 
 # ---------------------------------------------------------------- limpeza do payload

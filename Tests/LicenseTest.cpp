@@ -27,7 +27,9 @@ int main (int argc, char** argv)
 
         if (argc > 2 && juce::String (argv[2]) == "install" && info.valid)
         {
-            tl::License::install (txt);
+            const auto res = tl::License::install (txt);
+            std::printf ("install   : %s%s\n", res.valid ? "OK" : "FALHOU - ",
+                         res.valid ? "" : res.error.toRawUTF8());
             std::printf ("  -> instalada\n");
         }
     }

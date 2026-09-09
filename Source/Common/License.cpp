@@ -197,7 +197,12 @@ namespace tl
         if (! f.existsAsFile())
         {
             LicenseInfo info;
-            info.error = "Nenhuma licença instalada nesta máquina.";
+            const auto pasta = f.getParentDirectory();
+            if (pasta.isDirectory() && ! pasta.hasWriteAccess())
+                info.error = "A pasta de dados esta bloqueada para o seu usuario ("
+                           + pasta.getFullPathName() + ") — por isso a ativacao nao grava.";
+            else
+                info.error = "Nenhuma licença instalada nesta máquina.";
             return info;
         }
         return verify (f.loadFileAsString());
@@ -206,11 +211,45 @@ namespace tl
     LicenseInfo License::install (const juce::String& licenseText)
     {
         auto info = verify (licenseText);
-        if (info.valid)
+        if (! info.valid)
+            return info;
+
+        // Gravar pode falhar — e ja falhou de verdade: um instalador criou esta
+        // pasta como root e o usuario ficou sem permissao de escrita. Antes o
+        // resultado era ignorado, entao clicar em Ativar nao fazia nada e a tela
+        // voltava a dizer "nenhuma licenca instalada". Agora o motivo aparece.
+        const auto f = getLicenseFile();
+        const auto pasta = f.getParentDirectory();
+
+        if (! pasta.isDirectory())
         {
-            const auto f = getLicenseFile();
-            f.getParentDirectory().createDirectory();
-            f.replaceWithText (licenseText.trim() + juce::newLine);
+            const auto r = pasta.createDirectory();
+            if (r.failed())
+            {
+                info.valid = false;
+                info.error = "A licenca e valida, mas nao consegui criar a pasta "
+                             + pasta.getFullPathName() + " (" + r.getErrorMessage().trim() + ").";
+                return info;
+            }
+        }
+
+        if (! f.replaceWithText (licenseText.trim() + juce::newLine))
+        {
+            info.valid = false;
+            info.error = juce::String ("A licenca e valida, mas nao consegui gravar em ")
+                       + f.getFullPathName()
+                       + (pasta.hasWriteAccess()
+                            ? "."
+                            : juce::String (" — a pasta nao tem permissao de escrita para o seu usuario."));
+            return info;
+        }
+
+        // le de volta: melhor descobrir agora do que na proxima abertura
+        if (verify (f.loadFileAsString()).valid == false)
+        {
+            info.valid = false;
+            info.error = "A licenca foi gravada mas nao pode ser lida de volta em "
+                       + f.getFullPathName() + ".";
         }
         return info;
     }
