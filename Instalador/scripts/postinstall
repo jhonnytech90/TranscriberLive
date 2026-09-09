@@ -11,7 +11,7 @@
 #   VST3/          -> /Library/Audio/Plug-Ins/VST3
 #   Components/    -> /Library/Audio/Plug-Ins/Components
 #   Applications/  -> /Applications
-#   models/        -> ~/Library/Application Support/TranscriberLive/models  (do usuario logado)
+#   models/        -> /Library/Application Support/TranscriberLive/models
 #
 # Log completo em /private/tmp/transcriberlive-install.log
 #
@@ -62,10 +62,16 @@ if [ -z "$RAIZ" ]; then
     fi
 fi
 [ -z "$CASA" ] && CASA="$RAIZ/Users/teste"
-DEST_MODELOS="$CASA/Library/Application Support/TranscriberLive/models"
+
+# Modelos e licenca vao para a pasta DO SISTEMA, nao para a home do usuario.
+# Motivo: o instalador roda como root e a home "certa" e um chute quando existe
+# mais de um usuario ou quando alguem digita a senha de outra conta de admin.
+# O plugin procura nas duas pastas, entao quem instalou na mao antes nao perde nada.
+DEST_MODELOS="$RAIZ/Library/Application Support/TranscriberLive/models"
 
 echo "usuario  : ${USUARIO:-(modo teste)}"
 echo "home     : $CASA"
+echo "modelos  : $DEST_MODELOS"
 
 # ---------------------------------------------------------------- acha o payload
 # 1) junto do script (Additional Resources do Packages / --scripts do pkgbuild)
@@ -162,6 +168,17 @@ instalar() {
     return 0
 }
 
+# ---------------------------------------------------------------- permissoes dos dados
+# root:admin com escrita para o grupo: qualquer admin do Mac consegue ativar a
+# licenca e jogar mais um ggml-*.bin na pasta sem precisar de sudo.
+permissoes_dados() {
+    [ -n "$RAIZ" ] && return 0
+    base="$RAIZ/Library/Application Support/TranscriberLive"
+    [ -d "$base" ] || return 0
+    /usr/sbin/chown -R root:admin "$base" 2>/dev/null
+    /bin/chmod -R ug+rwX,o+rX "$base" 2>/dev/null
+}
+
 # ---------------------------------------------------------------- plugins e app
 echo ""
 echo "VST3 -> $DEST_VST3"
@@ -212,13 +229,13 @@ if [ -d "$TMP/models" ]; then
         fi
     done
 
-    # a pasta inteira precisa pertencer ao usuario, senao o plugin nao grava a licenca
-    if [ -z "$RAIZ" ] && [ -n "$USUARIO" ] && [ "$USUARIO" != "root" ]; then
-        /usr/sbin/chown -R "$USUARIO" "$CASA/Library/Application Support/TranscriberLive" 2>/dev/null
-    fi
+    permissoes_dados
 else
-    echo "  (sem modelos no payload — o usuario baixa depois)"
+    echo "  (sem modelos neste pacote — os escolhidos sao baixados pelos sub-pacotes)"
 fi
+
+/bin/mkdir -p "$DEST_MODELOS"
+permissoes_dados
 
 # ---------------------------------------------------------------- limpeza do payload
 # o zip so existe para atravessar o instalador; depois de distribuido, sai do disco

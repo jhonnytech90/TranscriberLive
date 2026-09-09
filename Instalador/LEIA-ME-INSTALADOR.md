@@ -21,7 +21,7 @@ postinstall -> move para /private/tmp, extrai e distribui:
                  VST3/          -> /Library/Audio/Plug-Ins/VST3
                  Components/    -> /Library/Audio/Plug-Ins/Components
                  Applications/  -> /Applications
-                 models/        -> ~/Library/Application Support/TranscriberLive/models
+                 models/        -> /Library/Application Support/TranscriberLive/models
              -> apaga o zip
 ```
 
@@ -30,11 +30,10 @@ postinstall -> move para /private/tmp, extrai e distribui:
 | Arquivo | Para que serve |
 |---|---|
 | `montar-instalador.command` | **duplo clique** — monta o payload e gera o `.pkg` inteiro |
+| `capa.png` / `capa-dark.png` | capa lateral da janela do Installer (claro / escuro) |
 | `scripts/postinstall` | o script que distribui tudo depois da instalação |
 | `postinstall-minimo.sh` | a mesma lógica em 60 linhas, só para depurar na mão |
 | `Introducao.txt` | tela de introdução do instalador |
-| `capa.png` | **capa lateral** do instalador (modo claro) |
-| `capa-dark.png` | capa lateral no modo escuro |
 | `binarios/` | *(você cria)* onde ficam os `.vst3`, `.component` e `.app` |
 | `modelos/` | *(você cria, opcional)* `ggml-*.bin` para já sair instalado |
 
@@ -55,12 +54,19 @@ Por isso o logo em cima e o QR embaixo funcionam bem, e o miolo vazio some.
 Se quiser trocar a arte, mantenha a proporção perto de 1:2 e deixe transparência no
 lugar do fundo: fundo branco chapado aparece como um retângulo branco no modo escuro.
 
-## O caminho automático (recomendado)
+## O caminho mais fácil: deixar o GitHub montar
+
+O `build.yml` tem um job `installer-macos` que roda depois da compilação: baixa os
+binários, monta o `.pkg` completo e sobe como artefato **`TranscriberLive-macOS-Installer`**
+na mesma página da build. Não precisa de nada instalado no seu Mac.
+
+## Montando no seu Mac
 
 1. Baixe os binários do GitHub Actions e descompacte dentro de uma pasta `binarios`
    aqui do lado. Não precisa organizar — o script procura sozinho.
-2. Se quiser que o instalador já traga os modelos, crie uma pasta `modelos` com os
-   `ggml-*.bin`. Sem ela, o instalador sai leve e o cliente baixa os modelos depois.
+2. Opcional: crie uma pasta `modelos` com `ggml-*.bin` para **embutir** algum modelo
+   no `.pkg` em vez de deixar o cliente baixar. Sem ela, o instalador sai leve
+   (só o VAD, 0,9 MB) e o cliente escolhe o que baixar na tela Personalizar.
 3. Duplo clique em `montar-instalador.command`.
 4. O `.pkg` sai em `saida/TranscriberLive-0.4.pkg`.
 
@@ -82,14 +88,12 @@ Agora fica simples, porque o zip vai por payload:
    do modo escuro), alinhamento **Bottom Left**, escala **Proportional**.
    Em *Introduction*, aponte o `Introducao.txt`.
 
-Se por algum motivo você preferir o pacote **sem payload nenhum** (o zip viajando dentro
-de `scripts/`), rode:
+O `postinstall` procura o zip em vários lugares (`/Applications`, ao lado do script,
+`/private/tmp`), então funciona tanto pelo caminho automático quanto pelo Packages.
 
-```bash
-TL_SEM_PAYLOAD=1 ./montar-instalador.command
-```
-
-O `postinstall` procura o zip nos dois lugares, então funciona igual nos dois modos.
+Pelo Packages você perde a tela de escolha dos modelos — ela vem do
+`distribution.xml` que o `montar-instalador.command` gera. Se quiser as duas coisas,
+use o caminho automático.
 
 ## O que o script instala, e onde
 
@@ -98,16 +102,59 @@ O `postinstall` procura o zip nos dois lugares, então funciona igual nos dois m
 | `.vst3` | `/Library/Audio/Plug-Ins/VST3` |
 | `.component` (AU) | `/Library/Audio/Plug-Ins/Components` |
 | `.app` | `/Applications` |
-| `ggml-*.bin` | `~/Library/Application Support/TranscriberLive/models` do usuário logado |
+| `ggml-*.bin` | `/Library/Application Support/TranscriberLive/models` |
 
-Ele ainda: descobre qual usuário está logado (o script roda como root, então isso é
-necessário para a pasta de modelos e para a licença), remove a quarentena dos bundles,
+Ele ainda: remove a quarentena dos bundles,
 aplica assinatura ad-hoc se algum bundle vier sem assinatura, reinicia o
 `AudioComponentRegistrar` para o AU aparecer sem reiniciar o Mac, e avisa se algum host
 estiver aberto na hora.
 
 Modelos que já existem **não são sobrescritos** — quem já tem um `ggml-medium` não perde
 o download ao reinstalar.
+
+## Modelos de voz: escolha na instalação
+
+O `.pkg` mostra a tela **Personalizar** com os modelos em caixinhas. Isso não é
+um truque: cada modelo é um sub-pacote sem payload cujo `postinstall` baixa
+aquele arquivo do Hugging Face. É o mesmo mecanismo que o Installer usa para
+qualquer instalação opcional, então a tela é nativa.
+
+| Modelo | Tamanho | Quando usar |
+|---|---|---|
+| Silero VAD | 0,9 MB | **vai dentro do `.pkg`**, sempre instalado |
+| tiny | 74 MB | Mac fraco, aceita errar |
+| base | 141 MB | Mac modesto |
+| **small** | **465 MB** | **marcado por padrão — recomendado para show** |
+| medium | 1,4 GB | mais preciso, exige CPU boa |
+| large-v3-turbo | 1,5 GB | o melhor, só em Mac forte |
+
+O VAD é embutido de propósito: são 0,9 MB e sem ele o Receiver não separa fala
+de vazamento. Assim o plugin funciona mesmo instalando num Mac sem internet.
+
+Cada download tem o **SHA-256 conferido**; arquivo corrompido é descartado em vez
+de instalado. Modelo que já existe na pasta não é baixado nem sobrescrito. E um
+download que falha **não derruba a instalação** — os plugins já estão no lugar, e
+o log diz onde colocar o `ggml-*.bin` depois.
+
+Os modelos vão para `/Library/Application Support/TranscriberLive/models`, não
+para a home do usuário. O instalador roda como root, e "a home certa" é um chute
+quando existe mais de uma conta ou quando alguém digita a senha de outro admin.
+O plugin procura nas duas pastas, então quem já tinha modelos na pasta antiga
+não perde nada.
+
+**Uma coisa honesta sobre a experiência:** enquanto baixa, o Installer.app só
+mostra "Executando scripts do pacote" com a barra indeterminada — ele não deixa
+um pacote desenhar progresso próprio sem um plugin de instalador em Objective-C.
+Para o cliente não achar que travou, o script dispara notificações do macOS
+("Baixando o modelo small...", "Modelo small pronto") e escreve o progresso no
+log. Com o `small` são uns 2 minutos numa internet boa; com o `large-v3-turbo`,
+bem mais.
+
+Para acompanhar o download durante um teste:
+
+```bash
+tail -f /private/tmp/transcriberlive-install.log
+```
 
 ## Testando antes de mandar para alguém
 

@@ -77,3 +77,34 @@ jobs:
         with:
           name: TranscriberLive-Windows-Setup
           path: Instalador/Windows/saida/*.exe
+
+  # ---------------------------------------------------------------------------
+  # Instalador do macOS (.pkg unico, com escolha e download dos modelos)
+  # ---------------------------------------------------------------------------
+  installer-macos:
+    needs: build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Baixa os binarios do macOS
+        uses: actions/download-artifact@v4
+        with:
+          name: TranscriberLive-macOS
+          path: Instalador/binarios
+
+      - name: Confere o que chegou
+        run: find Instalador/binarios -maxdepth 5 \( -name "*.vst3" -o -name "*.component" -o -name "*.app" \)
+
+      - name: Monta o instalador
+        env:
+          TL_NAO_INTERATIVO: "1"
+        run: |
+          chmod +x Instalador/montar-instalador.command Instalador/scripts/postinstall
+          Instalador/montar-instalador.command "$PWD/Instalador/binarios"
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: TranscriberLive-macOS-Installer
+          path: Instalador/saida/*.pkg
