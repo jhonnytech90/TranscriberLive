@@ -13,3 +13,8 @@ Ferramentas/__pycache__/
 Ferramentas/licencas/
 Ferramentas/licencas-emitidas.csv
 Ferramentas/transcriberlive-public.txt
+Instalador/binarios/
+Instalador/modelos/
+Instalador/saida/
+Instalador/recursos/
+Instalador/scripts/TranscriberLive-payload.zip
