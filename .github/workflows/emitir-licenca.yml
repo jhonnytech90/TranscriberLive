@@ -69,12 +69,49 @@ jobs:
           CHAVE: ${{ secrets.TRANSCRIBER_PRIVATE_KEY }}
         run: |
           if [ -z "$CHAVE" ]; then
-            echo "::error::O segredo TRANSCRIBER_PRIVATE_KEY não está configurado neste repositório."
-            echo "Veja Ferramentas/EMITIR-PELO-GITHUB.md"
+            echo "::error::Falta o segredo TRANSCRIBER_PRIVATE_KEY. Nenhuma licença foi emitida."
+            {
+              echo "## Falta configurar a chave de assinatura"
+              echo ""
+              echo "Nenhuma licença foi emitida — e isso é o esperado: sem a chave privada"
+              echo "não existe assinatura válida."
+              echo ""
+              echo "**No seu Mac**, copie a chave:"
+              echo ""
+              echo '```'
+              echo 'pbcopy < ~/Documents/TranscriberLive-Licencas/transcriberlive-private.key'
+              echo '```'
+              echo ""
+              echo "**No GitHub**, neste repositório:"
+              echo ""
+              echo "Settings → Secrets and variables → **Actions** → *New repository secret*"
+              echo ""
+              echo "| campo | valor |"
+              echo "|---|---|"
+              echo "| Name | \`TRANSCRIBER_PRIVATE_KEY\` |"
+              echo "| Secret | cole a chave |"
+              echo ""
+              echo "Atenção aos dois erros mais comuns: criar em *Variables* em vez de"
+              echo "*Secrets*, e criar em *Dependabot* em vez de *Actions*. Precisa ser"
+              echo "**Actions → Secrets**."
+              echo ""
+              echo "Depois é só rodar este workflow de novo. Detalhes em"
+              echo "\`Ferramentas/EMITIR-PELO-GITHUB.md\`."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           umask 077
           printf '%s' "$CHAVE" > "$RUNNER_TEMP/priv.key"
+
+          # erro classico: colar o conteudo errado (a chave PUBLICA, ou o arquivo
+          # cortado). Melhor descobrir aqui do que numa licenca invalida no cliente.
+          if ! python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); m=[c for c in ("n","e","d") if c not in k]; sys.exit("faltam os campos "+", ".join(m)) if m else None' "$RUNNER_TEMP/priv.key" 2>/tmp/erro; then
+            echo "::error::O segredo TRANSCRIBER_PRIVATE_KEY não parece ser a chave privada ($(cat /tmp/erro))."
+            echo "Ele precisa ser o conteúdo do arquivo transcriberlive-private.key (um JSON com n, e, d)," >> "$GITHUB_STEP_SUMMARY"
+            echo "não a linha da chave pública que fica embutida no plugin." >> "$GITHUB_STEP_SUMMARY"
+            rm -f "$RUNNER_TEMP/priv.key"
+            exit 1
+          fi
 
       - name: Emitir
         id: emitir
