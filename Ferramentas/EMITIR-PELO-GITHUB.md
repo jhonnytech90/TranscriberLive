@@ -35,13 +35,21 @@ Depois de salvar, nem você consegue ler o valor de volta — só sobrescrever.
 **Mantenha o backup da chave no seu Mac e num pendrive**, porque o GitHub não
 devolve.
 
-### 2. Exigir sua aprovação a cada emissão (recomendado)
+### 2. Exigir sua aprovação a cada emissão
 
 *Settings → Environments → New environment* → nome **`licencas`** →
 marque **Required reviewers** e coloque você mesmo.
 
-A partir daí, toda emissão fica parada esperando um toque seu de aprovação. É
-sua rede de proteção caso alguém consiga disparar o workflow.
+Toda emissão passa a ficar parada esperando um toque seu de aprovação.
+
+**Atenção:** em repositório privado, essa regra é recurso pago (GitHub Pro,
+US$ 4/mês). Na conta free o GitHub recusa com *"Please ensure the billing plan
+supports the required reviewers protection rule"*. O environment continua
+existindo e o workflow roda normalmente — só não há o portão de aprovação.
+
+Sem ela, a sua proteção é o controle de acesso ao repositório: **ligue o 2FA** e
+não dê acesso de escrita a ninguém. Se um dia o repositório passar a ter mais
+gente, aí vale os US$ 4 ou mover a emissão para um repositório privado só seu.
 
 ### 3. Receber a licença no Telegram (opcional, mas vale muito)
 
