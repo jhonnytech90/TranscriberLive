@@ -11,7 +11,7 @@
 #
 # Como funciona por dentro:
 #   core.pkg          -> payload = um zip em /Applications; o postinstall move tudo
-#   model-<nome>.pkg  -> sem payload; o postinstall baixa aquele modelo
+#   model-<nome>.pkg  -> payload = um arquivo-marcador; o postinstall baixa o modelo
 #   distribution.xml  -> junta tudo, com a capa lateral e as escolhas
 #
 # Nao interativo (para o CI):  TL_NAO_INTERATIVO=1 ./montar-instalador.command pasta
@@ -175,6 +175,17 @@ for linha in "${MODELOS[@]}"; do
     dir="$TMP/scripts-$nome"
     /bin/mkdir -p "$dir"
 
+    # PAYLOAD MINIMO — nao tire isso.
+    # Com "pkgbuild --nopayload" o PackageInfo sai SEM o elemento <payload>, e o
+    # Installer.app trata o sub-pacote como "nada para instalar": ele nao roda o
+    # postinstall e conclui na hora. Foi exatamente o que aconteceu na v1 deste
+    # instalador. Um arquivo-marcador de alguns bytes resolve: o pacote passa a
+    # ter payload, o script roda, e o proprio script apaga o marcador no fim.
+    pedidos="Library/Application Support/TranscriberLive/modelos-pedidos"
+    raiz="$TMP/root-$nome"
+    /bin/mkdir -p "$raiz/$pedidos"
+    echo "modelo solicitado na instalacao: ggml-$nome.bin" > "$raiz/$pedidos/$nome"
+
     /bin/cat > "$dir/postinstall" <<SCRIPT
 #!/bin/bash
 #
@@ -195,10 +206,18 @@ exec >> "\$LOG" 2>&1
 echo ""
 echo "--- modelo \$ARQUIVO em \$(date '+%H:%M:%S') ---"
 
-/bin/mkdir -p "\$DEST" || { echo "ERRO: nao consegui criar \$DEST"; exit 0; }
+PEDIDO="\${TL_TEST_ROOT:-}/Library/Application Support/TranscriberLive/modelos-pedidos/$nome"
+limpa_marcador() {
+    /bin/rm -f "\$PEDIDO" 2>/dev/null
+    /bin/rmdir "\$(dirname "\$PEDIDO")" 2>/dev/null
+    return 0
+}
+
+/bin/mkdir -p "\$DEST" || { echo "ERRO: nao consegui criar \$DEST"; limpa_marcador; exit 0; }
 
 if [ -f "\$DEST/\$ARQUIVO" ]; then
     echo "ja existe, mantido: \$DEST/\$ARQUIVO"
+    limpa_marcador
     exit 0
 fi
 
@@ -216,7 +235,7 @@ avisar() {
 avisar "Baixando o modelo $nome..."
 echo "baixando \$URL"
 
-TMPD=\$(/usr/bin/mktemp -d /private/tmp/tl-modelo-XXXXXX) || exit 0
+TMPD=\$(/usr/bin/mktemp -d /private/tmp/tl-modelo-XXXXXX) || { limpa_marcador; exit 0; }
 /usr/bin/curl -fL --retry 3 --retry-delay 5 --connect-timeout 30 --progress-bar \\
     -o "\$TMPD/\$ARQUIVO" "\$URL"
 CURL=\$?
@@ -225,6 +244,7 @@ if [ "\$CURL" -ne 0 ] || [ ! -s "\$TMPD/\$ARQUIVO" ]; then
     echo "ERRO: download falhou (curl \$CURL)"
     avisar "Nao consegui baixar o modelo $nome. Veja o Leia-me."
     /bin/rm -rf "\$TMPD"
+    limpa_marcador
     exit 0
 fi
 
@@ -235,6 +255,7 @@ if [ "\$GOT" != "\$SHA" ]; then
     echo "  obtido   \$GOT"
     avisar "O modelo $nome baixou corrompido e foi descartado."
     /bin/rm -rf "\$TMPD"
+    limpa_marcador
     exit 0
 fi
 
@@ -246,6 +267,8 @@ if [ -z "\${TL_TEST_ROOT:-}" ]; then
     /bin/chmod ug+rw,o+r "\$DEST/\$ARQUIVO" 2>/dev/null
 fi
 avisar "Modelo $nome pronto."
+
+limpa_marcador
 exit 0
 SCRIPT
 
@@ -253,7 +276,7 @@ SCRIPT
     /usr/bin/pkgbuild \
         --identifier "$ID.model.$nome" \
         --version "$VERSAO" \
-        --nopayload \
+        --root "$raiz" \
         --scripts "$dir" \
         --install-location / \
         "$SAIDA/model-$nome.pkg" >/dev/null || morre "pkgbuild (model-$nome) falhou."

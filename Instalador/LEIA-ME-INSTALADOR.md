@@ -115,9 +115,17 @@ o download ao reinstalar.
 ## Modelos de voz: escolha na instalação
 
 O `.pkg` mostra a tela **Personalizar** com os modelos em caixinhas. Isso não é
-um truque: cada modelo é um sub-pacote sem payload cujo `postinstall` baixa
-aquele arquivo do Hugging Face. É o mesmo mecanismo que o Installer usa para
-qualquer instalação opcional, então a tela é nativa.
+um truque: cada modelo é um sub-pacote cujo `postinstall` baixa aquele arquivo do
+Hugging Face. É o mesmo mecanismo que o Installer usa para qualquer instalação
+opcional, então a tela é nativa.
+
+> **Cuidado ao mexer nisso.** Cada sub-pacote de modelo tem um *payload mínimo*
+> — um arquivo-marcador em `modelos-pedidos/`, que o próprio script apaga no fim.
+> Não tire. Com `pkgbuild --nopayload` o `PackageInfo` sai **sem** o elemento
+> `<payload>`, e o Installer trata o sub-pacote como "nada para instalar": não
+> roda o `postinstall` e conclui na hora, sem baixar nada. Foi exatamente o bug
+> da primeira versão deste instalador. O sintoma é traiçoeiro porque a instalação
+> diz "concluída com sucesso".
 
 | Modelo | Tamanho | Quando usar |
 |---|---|---|
