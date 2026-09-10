@@ -1,0 +1,37 @@
+TRANSCRIBER LIVE
+Desinstalador
+
+Este pacote NAO instala nada. Ele remove o Transcriber Live deste computador.
+
+
+O QUE SERA REMOVIDO
+
+  - Transcriber Live Receiver (VST3 e Audio Unit)
+  - Transcriber Live Display  (VST3, Audio Unit e aplicativo)
+  - Os modelos de reconhecimento de voz
+  - As preferencias dos plugins
+
+
+O QUE SERA MANTIDO
+
+  A sua chave de ativacao.
+
+  Ela e presa a este computador, entao guardar custa nada e evita ter que
+  pedir outra caso voce reinstale depois. Se quiser apagar tambem, o arquivo
+  fica em:
+
+    ~/Biblioteca/Application Support/TranscriberLive/license.key
+
+
+ANTES DE CONTINUAR
+
+  Feche o SuperRack, o REAPER, o Live Professor ou qualquer host que esteja
+  com o plugin carregado. Os arquivos somem de qualquer jeito, mas o host so
+  solta o plugin da memoria quando for fechado.
+
+  Projetos salvos que usam o Transcriber Live vao abrir com o plugin faltando
+  ate voce instalar de novo. O audio desses canais continua passando normal.
+
+
+Transcriber Live - Jhonatan Miikael
+jhonyfascpinda@gmail.com

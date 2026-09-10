@@ -1,0 +1,80 @@
+#!/bin/bash
+#
+# Transcriber Live — desinstalador (macOS)
+#
+# Este .pkg nao instala nada: ele remove. O payload traz so um arquivo-marcador
+# (sem payload o Installer nao roda script nenhum); o marcador e apagado aqui.
+#
+# A LICENCA DO CLIENTE E PRESERVADA de proposito: ela e presa aquela maquina, e
+# apagar significaria pedir outra ao desenvolvedor numa reinstalacao.
+#
+LOG="/private/tmp/transcriberlive-desinstalar.log"
+exec >> "$LOG" 2>&1
+echo ""
+echo "=== Transcriber Live — desinstalacao em $(date '+%Y-%m-%d %H:%M:%S') ==="
+
+removidos=0
+remove() {
+    [ -e "$1" ] || return 0
+    if /bin/rm -rf "$1"; then
+        echo "removido: $1"; removidos=$((removidos+1))
+    else
+        echo "ERRO ao remover: $1"
+    fi
+}
+
+# avisa se um host estiver com o plugin carregado (o arquivo some, mas o host
+# so solta a memoria quando fechar)
+ABERTOS=""
+for app in "SuperRack Performer" "SuperRack" REAPER "Live Professor" Logic MainStage "Ableton Live"; do
+    /usr/bin/pgrep -x "$app" >/dev/null 2>&1 && ABERTOS="$ABERTOS $app"
+done
+[ -n "$ABERTOS" ] && echo "AVISO: estes programas estao abertos:$ABERTOS"
+
+remove "/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3"
+remove "/Library/Audio/Plug-Ins/VST3/Transcriber Live Display.vst3"
+remove "/Library/Audio/Plug-Ins/Components/Transcriber Live Receiver.component"
+remove "/Library/Audio/Plug-Ins/Components/Transcriber Live Display.component"
+remove "/Applications/Transcriber Live Display.app"
+
+# modelos e dados do sistema (inclui o marcador deste proprio pacote)
+remove "/Library/Application Support/TranscriberLive"
+
+# pasta do usuario: tira tudo MENOS a licenca
+U=$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
+if [ -n "$U" ] && [ "$U" != "root" ]; then
+    CASA=$(/usr/bin/dscl . -read "/Users/$U" NFSHomeDirectory 2>/dev/null | /usr/bin/awk '{print $2}')
+    PASTA="$CASA/Library/Application Support/TranscriberLive"
+    if [ -n "$CASA" ] && [ -d "$PASTA" ]; then
+        for X in "$PASTA"/*; do
+            [ -e "$X" ] || continue
+            case "$(basename "$X")" in
+                license.key) echo "mantido : $X  (licenca do cliente)" ;;
+                *) remove "$X" ;;
+            esac
+        done
+        # se sobrou so a licenca, a pasta fica; se ficou vazia, some
+        /bin/rmdir "$PASTA" 2>/dev/null && echo "removido: $PASTA"
+    fi
+    # preferencias dos plugins
+    for P in "$CASA/Library/Preferences/Transcriber Live Receiver.settings" \
+             "$CASA/Library/Preferences/Transcriber Live Display.settings"; do
+        remove "$P"
+    done
+fi
+
+# tira os recibos, senao o macOS ainda acha que o produto esta instalado
+for R in com.jhonatanmiikael.transcriberlive \
+         com.jhonatanmiikael.transcriberlive.core \
+         com.jhonatanmiikael.transcriberlive.desinstalador; do
+    /usr/sbin/pkgutil --pkgs | /usr/bin/grep -qx "$R" && {
+        /usr/sbin/pkgutil --forget "$R" >/dev/null 2>&1 && echo "recibo esquecido: $R"
+    }
+done
+
+/usr/bin/killall -9 AudioComponentRegistrar 2>/dev/null
+
+echo ""
+echo "$removidos itens removidos."
+echo "=== fim ==="
+exit 0

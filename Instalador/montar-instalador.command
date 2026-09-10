@@ -1,20 +1,25 @@
 #!/bin/bash
 #
-# Transcriber Live — monta o instalador .pkg do macOS
+# Transcriber Live — monta os pacotes do macOS
 #
-# Duplo clique aqui, ou:  ./montar-instalador.command [pasta-com-os-binarios]
+#   saida/TranscriberLive-<versao>-macOS.pkg                instalador (offline)
+#   saida/TranscriberLive-<versao>-macOS-Desinstalador.pkg  desinstalador
 #
-# O que sai: um unico TranscriberLive-0.4.pkg que
-#   - instala os VST3, os AU e o aplicativo Display
-#   - mostra a tela "Personalizar" com os modelos de voz em caixinhas
-#   - baixa do Hugging Face so os modelos marcados, conferindo o SHA-256
+# Duplo clique aqui, ou:
+#   ./montar-instalador.command [pasta-com-os-binarios] [pasta-com-os-modelos]
 #
-# Como funciona por dentro:
-#   core.pkg          -> payload = um zip em /Applications; o postinstall move tudo
-#   model-<nome>.pkg  -> payload = um arquivo-marcador; o postinstall baixa o modelo
-#   distribution.xml  -> junta tudo, com a capa lateral e as escolhas
+# Sem argumentos ele procura sozinho, nesta ordem:
+#   binarios:  ./binarios  ->  /Applications/arquivos  ->  ../build
+#   modelos:   ./modelos   ->  /Applications/arquivos/models
+#              ->  /Library/Application Support/TranscriberLive/models
 #
-# Nao interativo (para o CI):  TL_NAO_INTERATIVO=1 ./montar-instalador.command pasta
+# O instalador e PAYLOAD PURO: o macOS coloca cada arquivo no lugar sozinho.
+# Nada de zip, nada de mv, nada de download. Os modelos vao para
+# /Library/Application Support/TranscriberLive/models — pasta de sistema, que o
+# payload pode escrever (o erro "instalar conteudo no volume do sistema" so
+# acontece mirando a pasta do usuario) e que o plugin ja procura.
+#
+# Nao interativo (CI):  TL_NAO_INTERATIVO=1 ./montar-instalador.command ...
 #
 set -u
 cd "$(dirname "$0")" || exit 1
@@ -22,8 +27,10 @@ cd "$(dirname "$0")" || exit 1
 VERSAO="0.4"
 ID="com.jhonatanmiikael.transcriberlive"
 SAIDA="saida"
-PKG="$SAIDA/TranscriberLive-$VERSAO.pkg"
 LOTE="${TL_NAO_INTERATIVO:-0}"
+
+PKG_INST="$SAIDA/TranscriberLive-$VERSAO-macOS.pkg"
+PKG_DESI="$SAIDA/TranscriberLive-$VERSAO-macOS-Desinstalador.pkg"
 
 verde() { printf "\033[0;32m%s\033[0m\n" "$1"; }
 verm()  { printf "\033[0;31m%s\033[0m\n" "$1"; }
@@ -33,343 +40,194 @@ morre() { verm "$1"; pausa; exit 1; }
 
 echo ""
 echo "================================================================"
-echo " Transcriber Live $VERSAO — montador do instalador (macOS)"
+echo " Transcriber Live $VERSAO — pacotes do macOS"
 echo "================================================================"
 
-# ---------------------------------------------------------------- 0. modelos
-# nome|url|sha256|rotulo (o VAD nao entra aqui: vai dentro do core, obrigatorio)
-HF="https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
-MODELOS=(
-"tiny|$HF/ggml-tiny.bin|be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21|tiny — 74 MB — o mais leve, erra mais"
-"base|$HF/ggml-base.bin|60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe|base — 141 MB — bom para Mac modesto"
-"small|$HF/ggml-small.bin|1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b|small — 465 MB — recomendado para show"
-"medium|$HF/ggml-medium.bin|6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208|medium — 1,4 GB — mais preciso, exige CPU boa"
-"large-v3-turbo|$HF/ggml-large-v3-turbo.bin|1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69|large-v3-turbo — 1,5 GB — o melhor, so em Mac forte"
-)
-PADRAO="small"       # este vem marcado; os outros, desmarcados
-
-VAD_URL="https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"
-VAD_SHA="29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"
-
-# ---------------------------------------------------------------- 1. binarios
-ORIGEM="${1:-}"
-if [ -z "$ORIGEM" ]; then
-    for tentativa in "./binarios" "../build" "$HOME/Downloads/TranscriberLive-macOS" "$HOME/Downloads"; do
-        if [ -d "$tentativa" ] && [ -n "$(/usr/bin/find "$tentativa" -maxdepth 4 -name '*.vst3' -print -quit 2>/dev/null)" ]; then
-            ORIGEM="$tentativa"; break
+# ---------------------------------------------------------------- 1. origens
+BIN="${1:-}"
+if [ -z "$BIN" ]; then
+    for t in "./binarios" "/Applications/arquivos" "../build"; do
+        if [ -d "$t" ] && [ -n "$(/usr/bin/find "$t" -maxdepth 5 -name '*.vst3' -print -quit 2>/dev/null)" ]; then
+            BIN="$t"; break
         fi
     done
 fi
+[ -n "$BIN" ] && [ -d "$BIN" ] || morre "Nao achei os binarios (.vst3/.component/.app). Passe a pasta como argumento."
 
-if [ -z "$ORIGEM" ] || [ ! -d "$ORIGEM" ]; then
-    verm "Nao achei os binarios."
-    echo ""
-    echo "Coloque os .vst3 / .component / .app numa pasta chamada 'binarios' aqui do"
-    echo "lado (ou passe a pasta como argumento). Se voce baixou do GitHub Actions, e"
-    echo "so descompactar o zip TranscriberLive-macOS dentro de 'binarios'."
-    echo ""
-    pausa; exit 1
+MOD="${2:-}"
+if [ -z "$MOD" ]; then
+    for t in "./modelos" "/Applications/arquivos/models" "/Library/Application Support/TranscriberLive/models"; do
+        if [ -d "$t" ] && [ -n "$(/bin/ls "$t"/ggml-*.bin 2>/dev/null)" ]; then MOD="$t"; break; fi
+    done
 fi
 
-cinza "binarios : $ORIGEM"
+cinza "binarios : $BIN"
+cinza "modelos  : ${MOD:-(nenhum — o instalador sai sem modelos)}"
 
 TMP="$(/usr/bin/mktemp -d)"
 trap '/bin/rm -rf "$TMP"' EXIT
-/bin/mkdir -p "$TMP/payload/VST3" "$TMP/payload/Components" "$TMP/payload/Applications" "$TMP/payload/models"
+R="$TMP/root"
+/bin/mkdir -p "$R/Library/Audio/Plug-Ins/VST3" \
+              "$R/Library/Audio/Plug-Ins/Components" \
+              "$R/Applications" \
+              "$R/Library/Application Support/TranscriberLive/models" \
+              "$SAIDA"
 
+# ---------------------------------------------------------------- 2. payload
 achados=0
-copiar_bundles() {
+pegar() {   # pegar <padrao> <pasta destino no payload>
     padrao="$1"; destino="$2"
-    while IFS= read -r bundle; do
-        [ -z "$bundle" ] && continue
-        case "$bundle" in *".app/Contents/"*) continue;; esac
-        nome="$(basename "$bundle")"
+    while IFS= read -r B; do
+        [ -z "$B" ] && continue
+        # ignora o que estiver DENTRO de outro bundle
+        case "$B" in *".vst3/"*|*".component/"*|*".app/"*) continue;; esac
+        nome="$(basename "$B")"
         [ -e "$destino/$nome" ] && continue
-        /usr/bin/ditto "$bundle" "$destino/$nome" || continue
-
-        # O zip do GitHub Actions NAO preserva o bit de execucao. Sem isso o
-        # binario dentro do bundle nao roda e o host reclama de plugin quebrado.
-        /bin/chmod -R a+rX "$destino/$nome" 2>/dev/null
-        for exe in "$destino/$nome"/Contents/MacOS/*; do
-            [ -f "$exe" ] && /bin/chmod a+x "$exe" 2>/dev/null
-        done
-
+        /usr/bin/ditto "$B" "$destino/$nome" || continue
         echo "  + $nome"; achados=$((achados+1))
-    done < <(/usr/bin/find "$ORIGEM" -maxdepth 6 -name "$padrao" -type d 2>/dev/null | /usr/bin/sort)
+    done < <(/usr/bin/find "$BIN" -maxdepth 5 -name "$padrao" -type d 2>/dev/null | /usr/bin/sort)
 }
 
 echo ""
 echo "Plugins e aplicativo:"
-copiar_bundles "*.vst3"      "$TMP/payload/VST3"
-copiar_bundles "*.component" "$TMP/payload/Components"
-copiar_bundles "*.app"       "$TMP/payload/Applications"
-[ "$achados" -eq 0 ] && morre "Nenhum plugin encontrado em $ORIGEM."
+pegar "*.vst3"      "$R/Library/Audio/Plug-Ins/VST3"
+pegar "*.component" "$R/Library/Audio/Plug-Ins/Components"
+pegar "*.app"       "$R/Applications"
+[ "$achados" -eq 0 ] && morre "Nenhum plugin encontrado em $BIN."
 
-# ---------------------------------------------------------------- 2. VAD (obrigatorio)
-# 0,9 MB: vai dentro do instalador mesmo, para o Receiver funcionar mesmo que o
-# Mac do cliente esteja sem internet na hora da instalacao.
 echo ""
-echo "Detector de voz (Silero VAD):"
-VAD_LOCAL=""
-for t in "./modelos/ggml-silero-v5.1.2.bin" "$HOME/Library/Application Support/TranscriberLive/models/ggml-silero-v5.1.2.bin"; do
-    [ -f "$t" ] && { VAD_LOCAL="$t"; break; }
-done
-if [ -z "$VAD_LOCAL" ]; then
-    cinza "  baixando do Hugging Face..."
-    if /usr/bin/curl -fL --retry 3 --connect-timeout 20 -o "$TMP/vad.bin" "$VAD_URL" 2>/dev/null; then
-        VAD_LOCAL="$TMP/vad.bin"
-    fi
-fi
-if [ -n "$VAD_LOCAL" ]; then
-    got="$(/usr/bin/shasum -a 256 "$VAD_LOCAL" | /usr/bin/awk '{print $1}')"
-    if [ "$got" = "$VAD_SHA" ]; then
-        /usr/bin/ditto "$VAD_LOCAL" "$TMP/payload/models/ggml-silero-v5.1.2.bin"
-        echo "  + ggml-silero-v5.1.2.bin"
-    else
-        verm "  SHA-256 do VAD nao confere — o instalador vai sair sem ele."
-    fi
-else
-    verm "  nao consegui obter o VAD (sem internet?). O instalador sai sem ele."
-fi
-
-# modelos grandes que voce queira embutir (opcional): pasta ./modelos
-if [ -d "./modelos" ]; then
-    for m in ./modelos/ggml-*.bin; do
+echo "Modelos (embutidos, o cliente nao baixa nada):"
+if [ -n "$MOD" ]; then
+    for m in "$MOD"/ggml-*.bin; do
         [ -e "$m" ] || continue
-        case "$(basename "$m")" in *silero*|*vad*) continue;; esac
-        /usr/bin/ditto "$m" "$TMP/payload/models/$(basename "$m")" && echo "  + $(basename "$m") (embutido)"
+        /usr/bin/ditto "$m" "$R/Library/Application Support/TranscriberLive/models/$(basename "$m")" \
+            && echo "  + $(basename "$m")  ($(/usr/bin/du -h "$m" | /usr/bin/cut -f1))"
     done
+else
+    echo "  (nenhum)"
 fi
 
-# ---------------------------------------------------------------- 3. core.pkg
-echo ""
-echo "Compactando o payload..."
-/bin/mkdir -p scripts "$SAIDA" recursos
-/bin/rm -f scripts/TranscriberLive-payload.zip
-( cd "$TMP/payload" && /usr/bin/ditto -c -k --sequesterRsrc . "$OLDPWD/scripts/TranscriberLive-payload.zip" ) \
-    || morre "falha ao compactar."
-cinza "  scripts/TranscriberLive-payload.zip  ($(/usr/bin/du -h scripts/TranscriberLive-payload.zip | /usr/bin/awk '{print $1}'))"
-/bin/chmod +x scripts/postinstall 2>/dev/null
-
-echo ""
-echo "Gerando os pacotes..."
-/bin/rm -f "$SAIDA"/*.pkg
-ROOT="$TMP/root"
-/bin/mkdir -p "$ROOT/Applications"
-/bin/cp scripts/TranscriberLive-payload.zip "$ROOT/Applications/TranscriberLive-payload.zip"
-
-/usr/bin/pkgbuild \
-    --identifier "$ID.core" \
-    --version "$VERSAO" \
-    --root "$ROOT" \
-    --scripts scripts \
-    --install-location / \
-    "$SAIDA/core.pkg" >/dev/null || morre "pkgbuild (core) falhou."
-cinza "  core.pkg"
-
-# ---------------------------------------------------------------- 4. um pkg por modelo
-# Cada um e um pacote SEM payload: so um postinstall que baixa aquele arquivo.
-# Assim o Installer.app mostra as caixinhas nativas na tela "Personalizar".
-for linha in "${MODELOS[@]}"; do
-    IFS='|' read -r nome url sha rotulo <<< "$linha"
-    dir="$TMP/scripts-$nome"
-    /bin/mkdir -p "$dir"
-
-    # PAYLOAD MINIMO — nao tire isso.
-    # Com "pkgbuild --nopayload" o PackageInfo sai SEM o elemento <payload>, e o
-    # Installer.app trata o sub-pacote como "nada para instalar": ele nao roda o
-    # postinstall e conclui na hora. Foi exatamente o que aconteceu na v1 deste
-    # instalador. Um arquivo-marcador de alguns bytes resolve: o pacote passa a
-    # ter payload, o script roda, e o proprio script apaga o marcador no fim.
-    pedidos="Library/Application Support/TranscriberLive/modelos-pedidos"
-    raiz="$TMP/root-$nome"
-    /bin/mkdir -p "$raiz/$pedidos"
-    echo "modelo solicitado na instalacao: ggml-$nome.bin" > "$raiz/$pedidos/$nome"
-
-    /bin/cat > "$dir/postinstall" <<SCRIPT
-#!/bin/bash
-#
-# Transcriber Live — baixa o modelo ggml-$nome.bin
-#
-# Pacote sem payload: quem coloca o arquivo no disco e este script.
-# Regras: nunca sobrescreve um modelo existente, confere o SHA-256, e NUNCA
-# falha a instalacao — os plugins ja estao no lugar, um download que nao deu
-# nao pode desfazer isso.
-#
-ARQUIVO="ggml-$nome.bin"
-URL="$url"
-SHA="$sha"
-DEST="\${TL_TEST_ROOT:-}/Library/Application Support/TranscriberLive/models"
-LOG="/private/tmp/transcriberlive-install.log"
-
-exec >> "\$LOG" 2>&1
-echo ""
-echo "--- modelo \$ARQUIVO em \$(date '+%H:%M:%S') ---"
-
-PEDIDO="\${TL_TEST_ROOT:-}/Library/Application Support/TranscriberLive/modelos-pedidos/$nome"
-limpa_marcador() {
-    /bin/rm -f "\$PEDIDO" 2>/dev/null
-    /bin/rmdir "\$(dirname "\$PEDIDO")" 2>/dev/null
-    return 0
-}
-
-/bin/mkdir -p "\$DEST" || { echo "ERRO: nao consegui criar \$DEST"; limpa_marcador; exit 0; }
-
-if [ -f "\$DEST/\$ARQUIVO" ]; then
-    echo "ja existe, mantido: \$DEST/\$ARQUIVO"
-    limpa_marcador
-    exit 0
-fi
-
-# avisa quem esta na frente do Mac (o Installer so mostra "executando scripts")
-USUARIO=\$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
-avisar() {
-    if [ -n "\${TL_TEST_ROOT:-}" ]; then return 0; fi
-    if [ -z "\$USUARIO" ] || [ "\$USUARIO" = "root" ]; then return 0; fi
-    UID_U=\$(/usr/bin/id -u "\$USUARIO" 2>/dev/null) || return 0
-    /bin/launchctl asuser "\$UID_U" /usr/bin/sudo -u "\$USUARIO" \\
-        /usr/bin/osascript -e "display notification \"\$1\" with title \"Transcriber Live\"" \\
-        >/dev/null 2>&1
-}
-
-avisar "Baixando o modelo $nome..."
-echo "baixando \$URL"
-
-TMPD=\$(/usr/bin/mktemp -d /private/tmp/tl-modelo-XXXXXX) || { limpa_marcador; exit 0; }
-/usr/bin/curl -fL --retry 3 --retry-delay 5 --connect-timeout 30 --progress-bar \\
-    -o "\$TMPD/\$ARQUIVO" "\$URL"
-CURL=\$?
-
-if [ "\$CURL" -ne 0 ] || [ ! -s "\$TMPD/\$ARQUIVO" ]; then
-    echo "ERRO: download falhou (curl \$CURL)"
-    avisar "Nao consegui baixar o modelo $nome. Veja o Leia-me."
-    /bin/rm -rf "\$TMPD"
-    limpa_marcador
-    exit 0
-fi
-
-GOT=\$(/usr/bin/shasum -a 256 "\$TMPD/\$ARQUIVO" | /usr/bin/awk '{print \$1}')
-if [ "\$GOT" != "\$SHA" ]; then
-    echo "ERRO: SHA-256 nao confere"
-    echo "  esperado \$SHA"
-    echo "  obtido   \$GOT"
-    avisar "O modelo $nome baixou corrompido e foi descartado."
-    /bin/rm -rf "\$TMPD"
-    limpa_marcador
-    exit 0
-fi
-
-/bin/mv -f "\$TMPD/\$ARQUIVO" "\$DEST/\$ARQUIVO" && echo "instalado: \$DEST/\$ARQUIVO"
-/bin/rm -rf "\$TMPD"
-
-if [ -z "\${TL_TEST_ROOT:-}" ]; then
-    /usr/sbin/chown root:admin "\$DEST/\$ARQUIVO" 2>/dev/null
-    /bin/chmod ug+rw,o+r "\$DEST/\$ARQUIVO" 2>/dev/null
-fi
-avisar "Modelo $nome pronto."
-
-limpa_marcador
-exit 0
-SCRIPT
-
-    /bin/chmod +x "$dir/postinstall"
-    /usr/bin/pkgbuild \
-        --identifier "$ID.model.$nome" \
-        --version "$VERSAO" \
-        --root "$raiz" \
-        --scripts "$dir" \
-        --install-location / \
-        "$SAIDA/model-$nome.pkg" >/dev/null || morre "pkgbuild (model-$nome) falhou."
-    cinza "  model-$nome.pkg"
+# lixo do Finder e copias aninhadas de instalacoes feitas com 'mv'
+/usr/bin/find "$R" -name '.DS_Store' -delete 2>/dev/null
+/usr/bin/find "$R" -mindepth 2 \( -name '*.vst3' -o -name '*.component' -o -name '*.app' \) -print0 2>/dev/null |
+while IFS= read -r -d '' X; do
+    case "$X" in
+        *.vst3/*.vst3|*.component/*.component|*.app/*.app)
+            echo "  - aninhado removido: $(basename "$X")"; /bin/rm -rf "$X" ;;
+    esac
 done
 
-# ---------------------------------------------------------------- 5. distribution.xml
-[ -f Introducao.txt ]     && /bin/cp Introducao.txt recursos/
-[ -f Licenca-de-uso.txt ] && /bin/cp Licenca-de-uso.txt recursos/
-[ -f capa.png ]           && /bin/cp capa.png recursos/
-[ -f capa-dark.png ]      && /bin/cp capa-dark.png recursos/
+# ---------------------------------------------------------------- 3. conferencia
+echo ""
+echo "Conferindo o payload:"
+ok=1
+for B in "$R/Library/Audio/Plug-Ins/VST3/"*.vst3 \
+         "$R/Library/Audio/Plug-Ins/Components/"*.component \
+         "$R/Applications/"*.app; do
+    [ -e "$B" ] || continue
+    EXE="$(/bin/ls "$B/Contents/MacOS/" 2>/dev/null | /usr/bin/head -1)"
+    if [ -z "$EXE" ]; then verm "  ERRO: $(basename "$B") sem binario em Contents/MacOS"; ok=0
+    else echo "  ok  $(basename "$B")"; fi
+done
+[ "$ok" = "1" ] || morre "Payload invalido — nao vou empacotar isso."
+
+# ---------------------------------------------------------------- 4. recursos
+/bin/mkdir -p recursos
+[ -f capa.png ]        && /bin/cp capa.png recursos/
+[ -f capa-dark.png ]   && /bin/cp capa-dark.png recursos/
+[ -f Introducao.txt ]  && /bin/cp Introducao.txt recursos/
+
+fundo() {
+    [ -f recursos/capa.png ] && \
+        echo '    <background file="capa.png" mime-type="image/png" alignment="bottomleft" scaling="proportional"/>'
+    [ -f recursos/capa-dark.png ] && \
+        echo '    <background-darkAqua file="capa-dark.png" mime-type="image/png" alignment="bottomleft" scaling="proportional"/>'
+}
+
+# ---------------------------------------------------------------- 5. instalador
+echo ""
+echo "Gerando o instalador..."
+/bin/chmod +x scripts/postinstall 2>/dev/null
+/bin/rm -f "$SAIDA"/*.pkg
+
+/usr/bin/pkgbuild --identifier "$ID" --version "$VERSAO" \
+    --root "$R" --scripts scripts \
+    --ownership recommended --install-location / \
+    "$TMP/base.pkg" >/dev/null || morre "pkgbuild (instalador) falhou."
 
 {
-cat <<XML
-<?xml version="1.0" encoding="utf-8"?>
-<installer-gui-script minSpecVersion="2">
-    <title>Transcriber Live</title>
-    <organization>$ID</organization>
-XML
-[ -f recursos/capa.png ] && \
-    echo '    <background file="capa.png" mime-type="image/png" alignment="bottomleft" scaling="proportional"/>'
-[ -f recursos/capa-dark.png ] && \
-    echo '    <background-darkAqua file="capa-dark.png" mime-type="image/png" alignment="bottomleft" scaling="proportional"/>'
-[ -f recursos/Introducao.txt ]     && echo '    <welcome file="Introducao.txt" mime-type="text/plain"/>'
-[ -f recursos/Licenca-de-uso.txt ] && echo '    <license file="Licenca-de-uso.txt" mime-type="text/plain"/>'
-cat <<XML
-    <options customize="always" require-scripts="true" hostArchitectures="arm64,x86_64"/>
-    <volume-check>
-        <allowed-os-versions><os-version min="11.0"/></allowed-os-versions>
-    </volume-check>
-
-    <choices-outline>
-        <line choice="core"/>
-        <line choice="modelos">
-XML
-for linha in "${MODELOS[@]}"; do
-    IFS='|' read -r nome _ _ _ <<< "$linha"
-    echo "            <line choice=\"m_$nome\"/>"
-done
-cat <<XML
-        </line>
-    </choices-outline>
-
-    <choice id="core" title="Plugins e aplicativo"
-            description="Receiver e Display (VST3 e AU), o aplicativo Display e o detector de voz. Obrigatorio."
-            enabled="false" selected="true">
-        <pkg-ref id="$ID.core"/>
-    </choice>
-
-    <choice id="modelos" title="Modelos de reconhecimento de voz"
-            description="Baixados do Hugging Face durante a instalacao, com o SHA-256 conferido. Modelo maior acerta mais e pesa mais na CPU. Modelos que voce ja tem nao sao baixados de novo."/>
-XML
-for linha in "${MODELOS[@]}"; do
-    IFS='|' read -r nome _ _ rotulo <<< "$linha"
-    sel="false"; [ "$nome" = "$PADRAO" ] && sel="true"
-    cat <<XML
-    <choice id="m_$nome" title="$rotulo" start_selected="$sel">
-        <pkg-ref id="$ID.model.$nome"/>
-    </choice>
-XML
-done
-cat <<XML
-
-    <pkg-ref id="$ID.core" version="$VERSAO" auth="Root">core.pkg</pkg-ref>
-XML
-for linha in "${MODELOS[@]}"; do
-    IFS='|' read -r nome _ _ _ <<< "$linha"
-    echo "    <pkg-ref id=\"$ID.model.$nome\" version=\"$VERSAO\" auth=\"Root\">model-$nome.pkg</pkg-ref>"
-done
+echo '<?xml version="1.0" encoding="utf-8"?>'
+echo '<installer-gui-script minSpecVersion="2">'
+echo "    <title>Transcriber Live</title>"
+echo "    <organization>$ID</organization>"
+fundo
+[ -f recursos/Introducao.txt ] && echo '    <welcome file="Introducao.txt" mime-type="text/plain"/>'
+echo '    <options customize="never" require-scripts="true" hostArchitectures="arm64,x86_64"/>'
+echo '    <volume-check><allowed-os-versions><os-version min="11.0"/></allowed-os-versions></volume-check>'
+echo '    <choices-outline><line choice="tudo"/></choices-outline>'
+echo "    <choice id=\"tudo\" title=\"Transcriber Live\"><pkg-ref id=\"$ID\"/></choice>"
+echo "    <pkg-ref id=\"$ID\" version=\"$VERSAO\" auth=\"Root\">base.pkg</pkg-ref>"
 echo '</installer-gui-script>'
-} > "$SAIDA/distribution.xml"
+} > "$TMP/dist-inst.xml"
 
-/usr/bin/xmllint --noout "$SAIDA/distribution.xml" 2>/dev/null || cinza "  (xmllint indisponivel — XML nao verificado)"
+/usr/bin/productbuild --distribution "$TMP/dist-inst.xml" \
+    --package-path "$TMP" --resources recursos \
+    "$PKG_INST" >/dev/null || morre "productbuild (instalador) falhou."
+verde "  $PKG_INST  ($(/usr/bin/du -h "$PKG_INST" | /usr/bin/cut -f1))"
 
-# ---------------------------------------------------------------- 6. productbuild
-/usr/bin/productbuild \
-    --distribution "$SAIDA/distribution.xml" \
-    --package-path "$SAIDA" \
-    --resources recursos \
-    "$PKG" >/dev/null || morre "productbuild falhou."
-
-/bin/rm -f "$SAIDA"/core.pkg "$SAIDA"/model-*.pkg "$SAIDA/distribution.xml"
-
+# ---------------------------------------------------------------- 6. desinstalador
 echo ""
-verde "Pronto: $PKG  ($(/usr/bin/du -h "$PKG" | /usr/bin/awk '{print $1}'))"
+echo "Gerando o desinstalador..."
+/bin/chmod +x desinstalador/scripts/postinstall 2>/dev/null
+
+# PAYLOAD MINIMO — nao tire.
+# Com --nopayload o PackageInfo sai sem o elemento <payload>, e dentro de uma
+# distribuicao do productbuild o Installer trata o pacote como "nada a fazer":
+# nao roda o script e conclui na hora. O proprio script apaga este marcador.
+DR="$TMP/root-desi/Library/Application Support/TranscriberLive"
+/bin/mkdir -p "$DR"
+echo "desinstalacao solicitada em $(date)" > "$DR/.desinstalar"
+
+/usr/bin/pkgbuild --identifier "$ID.desinstalador" --version "$VERSAO" \
+    --root "$TMP/root-desi" --scripts desinstalador/scripts \
+    --ownership recommended --install-location / \
+    "$TMP/desi.pkg" >/dev/null || morre "pkgbuild (desinstalador) falhou."
+
+/bin/mkdir -p recursos-desi
+[ -f capa.png ]      && /bin/cp capa.png recursos-desi/
+[ -f capa-dark.png ] && /bin/cp capa-dark.png recursos-desi/
+[ -f desinstalador/Desinstalar.txt ] && /bin/cp desinstalador/Desinstalar.txt recursos-desi/
+
+{
+echo '<?xml version="1.0" encoding="utf-8"?>'
+echo '<installer-gui-script minSpecVersion="2">'
+echo "    <title>Desinstalar o Transcriber Live</title>"
+echo "    <organization>$ID</organization>"
+[ -f recursos-desi/capa.png ] && \
+    echo '    <background file="capa.png" mime-type="image/png" alignment="bottomleft" scaling="proportional"/>'
+[ -f recursos-desi/capa-dark.png ] && \
+    echo '    <background-darkAqua file="capa-dark.png" mime-type="image/png" alignment="bottomleft" scaling="proportional"/>'
+[ -f recursos-desi/Desinstalar.txt ] && echo '    <welcome file="Desinstalar.txt" mime-type="text/plain"/>'
+echo '    <options customize="never" require-scripts="true" hostArchitectures="arm64,x86_64"/>'
+echo '    <choices-outline><line choice="remover"/></choices-outline>'
+echo "    <choice id=\"remover\" title=\"Remover o Transcriber Live\"><pkg-ref id=\"$ID.desinstalador\"/></choice>"
+echo "    <pkg-ref id=\"$ID.desinstalador\" version=\"$VERSAO\" auth=\"Root\">desi.pkg</pkg-ref>"
+echo '</installer-gui-script>'
+} > "$TMP/dist-desi.xml"
+
+/usr/bin/productbuild --distribution "$TMP/dist-desi.xml" \
+    --package-path "$TMP" --resources recursos-desi \
+    "$PKG_DESI" >/dev/null || morre "productbuild (desinstalador) falhou."
+verde "  $PKG_DESI  ($(/usr/bin/du -h "$PKG_DESI" | /usr/bin/cut -f1))"
+
+# ---------------------------------------------------------------- 7. fim
 echo ""
 echo "Teste antes de mandar para alguem:"
-echo "  sudo installer -pkg \"$PKG\" -target /"
+echo "  sudo installer -pkg \"$PKG_INST\" -target /"
 echo "  tail -f /private/tmp/transcriberlive-install.log"
 echo ""
-cinza "Sem assinatura, o macOS do cliente vai pedir 'Abrir mesmo assim' em"
-cinza "Ajustes > Privacidade e Seguranca. Para evitar isso e preciso conta de"
-cinza "desenvolvedor Apple (productsign + notarytool)."
+cinza "Sem assinatura, o macOS do cliente pede 'Abrir mesmo assim' em"
+cinza "Ajustes > Privacidade e Seguranca (conta de desenvolvedor Apple resolve)."
 echo ""
 [ "$LOTE" = "1" ] || /usr/bin/open "$SAIDA" 2>/dev/null
 pausa

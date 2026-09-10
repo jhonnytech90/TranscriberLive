@@ -1,296 +1,65 @@
 #!/bin/bash
 #
-# Transcriber Live — script pos-instalacao (macOS)
+# Transcriber Live — pos-instalacao (macOS)
 #
-# O pacote NAO instala nada por payload (por isso nao esbarra na protecao do
-# volume do sistema). Ele carrega apenas este script e um TranscriberLive-payload.zip;
-# aqui a gente descompacta num temporario e move cada coisa para o lugar certo.
+# O payload do .pkg ja colocou cada arquivo no lugar. Aqui so ajustamos o que
+# o payload nao consegue: quarentena, permissoes e o registro dos Audio Units.
 #
-# Estrutura esperada dentro do zip:
+# Log: /private/tmp/transcriberlive-install.log
 #
-#   VST3/          -> /Library/Audio/Plug-Ins/VST3
-#   Components/    -> /Library/Audio/Plug-Ins/Components
-#   Applications/  -> /Applications
-#   models/        -> /Library/Application Support/TranscriberLive/models
-#
-# Log completo em /private/tmp/transcriberlive-install.log
-#
-# Teste (sem tocar no sistema):  TL_TEST_ROOT=/tmp/teste ./postinstall
-#
-
-VERSION="0.4"
-
-# no macOS /private/tmp sempre existe; o fallback e so para nao quebrar em outros casos
-TMPBASE="/private/tmp"
-[ -d "$TMPBASE" ] || TMPBASE="${TMPDIR:-/tmp}"
-LOG="$TMPBASE/transcriberlive-install.log"
-
-# ---------------------------------------------------------------- log
-exec > >(/usr/bin/tee -a "$LOG") 2>&1
+LOG="/private/tmp/transcriberlive-install.log"
+exec >> "$LOG" 2>&1
 echo ""
-echo "=============================================================="
-echo "Transcriber Live $VERSION — instalacao em $(date '+%Y-%m-%d %H:%M:%S')"
-echo "=============================================================="
+echo "=== Transcriber Live — instalado em $(date '+%Y-%m-%d %H:%M:%S') ==="
 
-falhou=0
-aviso() { echo "AVISO: $*"; }
-erro()  { echo "ERRO : $*"; falhou=1; }
+BUNDLES="/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3
+/Library/Audio/Plug-Ins/VST3/Transcriber Live Display.vst3
+/Library/Audio/Plug-Ins/Components/Transcriber Live Receiver.component
+/Library/Audio/Plug-Ins/Components/Transcriber Live Display.component
+/Applications/Transcriber Live Display.app"
 
-# ---------------------------------------------------------------- destinos
-# TL_TEST_ROOT permite testar tudo dentro de uma pasta, sem mexer no sistema.
-RAIZ="${TL_TEST_ROOT:-}"
-
-DEST_VST3="$RAIZ/Library/Audio/Plug-Ins/VST3"
-DEST_AU="$RAIZ/Library/Audio/Plug-Ins/Components"
-DEST_APP="$RAIZ/Applications"
-
-# ---------------------------------------------------------------- usuario logado
-# O script roda como root; os modelos e a licenca pertencem ao usuario que esta usando o Mac.
-USUARIO=""
-if [ -z "$RAIZ" ]; then
-    USUARIO=$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
-    if [ -z "$USUARIO" ] || [ "$USUARIO" = "root" ]; then
-        USUARIO=$(/usr/sbin/scutil <<< "show State:/Users/ConsoleUser" 2>/dev/null \
-                  | /usr/bin/awk '/Name :/ && ! /loginwindow/ { print $3 }')
-    fi
-    [ -z "$USUARIO" ] && USUARIO="$USER"
-    [ -z "$USUARIO" ] && USUARIO=$(/usr/bin/logname 2>/dev/null)
-
-    if [ -n "$USUARIO" ] && [ "$USUARIO" != "root" ]; then
-        CASA=$(/usr/bin/dscl . -read "/Users/$USUARIO" NFSHomeDirectory 2>/dev/null \
-               | /usr/bin/awk '{ print $2 }')
-    fi
-fi
-[ -z "$CASA" ] && CASA="$RAIZ/Users/teste"
-
-# Modelos e licenca vao para a pasta DO SISTEMA, nao para a home do usuario.
-# Motivo: o instalador roda como root e a home "certa" e um chute quando existe
-# mais de um usuario ou quando alguem digita a senha de outra conta de admin.
-# O plugin procura nas duas pastas, entao quem instalou na mao antes nao perde nada.
-DEST_MODELOS="$RAIZ/Library/Application Support/TranscriberLive/models"
-
-echo "usuario  : ${USUARIO:-(modo teste)}"
-echo "home     : $CASA"
-echo "modelos  : $DEST_MODELOS"
-
-# ---------------------------------------------------------------- acha o payload
-# 1) junto do script (Additional Resources do Packages / --scripts do pkgbuild)
-# 2) numa pasta temporaria, caso voce prefira instalar o zip por payload
-AQUI="$(cd "$(dirname "$0")" && pwd)"
-ZIP=""
-APAGAR_ZIP=0   # 1 = o zip veio pelo payload e deve sair do disco no fim
-
-for candidato in \
-    "$RAIZ/Applications/TranscriberLive-payload.zip" \
-    "$RAIZ/Library/Application Support/TranscriberLive-payload.zip" \
-    "$AQUI/TranscriberLive-payload.zip" \
-    "$AQUI/../TranscriberLive-payload.zip" \
-    "$TMPBASE/TranscriberLive-Install/TranscriberLive-payload.zip" \
-    "$RAIZ/Library/Application Support/TranscriberLive/_install/TranscriberLive-payload.zip"
-do
-    if [ -f "$candidato" ]; then
-        ZIP="$candidato"
-        # se o zip foi instalado por payload (esta em /Applications ou em
-        # Application Support), ele e temporario: sai do disco no final.
-        case "$candidato" in
-            "$RAIZ/Applications/"*|"$RAIZ/Library/Application Support/TranscriberLive-payload.zip") APAGAR_ZIP=1;;
-        esac
-        break
-    fi
+echo "$BUNDLES" | while IFS= read -r B; do
+    [ -e "$B" ] || { echo "AVISO: nao instalado: $B"; continue; }
+    # sem isso o host recusa carregar plugin baixado da internet
+    /usr/bin/xattr -cr "$B" 2>/dev/null
+    /bin/chmod -R a+rX "$B" 2>/dev/null
+    echo "ok: $B"
 done
 
-if [ -z "$ZIP" ]; then
-    erro "nao encontrei TranscriberLive-payload.zip (procurei em /Applications, junto do script e em $TMPBASE/TranscriberLive-Install)."
-    exit 1
-fi
-echo "payload  : $ZIP ($(/usr/bin/du -h "$ZIP" | /usr/bin/awk '{print $1}'))"
-
-# ---------------------------------------------------------------- espaco em disco
-LIVRE_KB=$(/bin/df -k "$TMPBASE" | /usr/bin/awk 'NR==2 {print $4}')
-PRECISA_KB=$(( $(/usr/bin/stat -f%z "$ZIP" 2>/dev/null || echo 0) / 1024 * 3 ))
-if [ -n "$LIVRE_KB" ] && [ "$PRECISA_KB" -gt 0 ] && [ "$LIVRE_KB" -lt "$PRECISA_KB" ]; then
-    erro "espaco insuficiente em disco (precisa de cerca de $(( PRECISA_KB / 1024 )) MB livres)."
-    exit 1
+# modelos: root:admin com escrita do grupo, para qualquer admin acrescentar
+# outro ggml-*.bin depois sem precisar de sudo
+DADOS="/Library/Application Support/TranscriberLive"
+if [ -d "$DADOS" ]; then
+    /usr/sbin/chown -R root:admin "$DADOS" 2>/dev/null
+    /bin/chmod -R ug+rwX,o+rX "$DADOS" 2>/dev/null
+    echo "modelos: $(/bin/ls "$DADOS/models" 2>/dev/null | /usr/bin/tr '\n' ' ')"
 fi
 
-# ---------------------------------------------------------------- descompacta
-TMP=$(/usr/bin/mktemp -d "$TMPBASE/TranscriberLive-XXXXXX") || { erro "nao consegui criar pasta temporaria."; exit 1; }
-limpar() { [ -n "$TMP" ] && /bin/rm -rf "$TMP"; }
-trap limpar EXIT
-
-echo "extraindo para $TMP ..."
-if ! /usr/bin/ditto -x -k "$ZIP" "$TMP"; then
-    erro "falha ao descompactar o payload."
-    exit 1
-fi
-
-# se o zip tiver uma pasta raiz unica, entra nela
-if [ "$(/bin/ls -1 "$TMP" | /usr/bin/wc -l | /usr/bin/tr -d ' ')" = "1" ]; then
-    UNICO="$TMP/$(/bin/ls -1 "$TMP")"
-    [ -d "$UNICO" ] && [ ! -d "$TMP/VST3" ] && TMP="$UNICO"
-fi
-
-# ---------------------------------------------------------------- funcao de copia
-# instala <origem> <pasta destino> <dono:grupo> — substitui a versao anterior
-instalar() {
-    origem="$1"; destino="$2"; dono="$3"
-    nome="$(basename "$origem")"
-
-    /bin/mkdir -p "$destino" || { erro "nao consegui criar $destino"; return 1; }
-
-    if [ -e "$destino/$nome" ]; then
-        echo "  substituindo $nome"
-        /bin/rm -rf "$destino/$nome" || { erro "nao consegui remover a versao antiga de $nome (esta em uso?)"; return 1; }
-    else
-        echo "  instalando   $nome"
-    fi
-
-    if ! /usr/bin/ditto "$origem" "$destino/$nome"; then
-        erro "falha ao copiar $nome para $destino"
-        return 1
-    fi
-
-    # tira a quarentena (senao o host recusa carregar plugin baixado da internet)
-    /usr/bin/xattr -dr com.apple.quarantine "$destino/$nome" 2>/dev/null
-
-    if [ -z "$RAIZ" ] && [ -n "$dono" ]; then
-        /usr/sbin/chown -R "$dono" "$destino/$nome" 2>/dev/null
-        /bin/chmod -R go-w "$destino/$nome" 2>/dev/null
-    fi
-
-    # assinatura ad-hoc de emergencia: sem isso, bundle sem assinatura nao abre
-    # no Apple Silicon. Se ja estiver assinado, nao mexe.
-    if [ -z "$RAIZ" ] && ! /usr/bin/codesign -v "$destino/$nome" >/dev/null 2>&1; then
-        aviso "$nome estava sem assinatura valida — aplicando assinatura ad-hoc"
-        /usr/bin/codesign --force --deep --sign - "$destino/$nome" >/dev/null 2>&1 \
-            || aviso "nao consegui assinar $nome (pode pedir autorizacao ao abrir)"
-    fi
-    return 0
-}
-
-# ---------------------------------------------------------------- permissoes dos dados
-# root:admin com escrita para o grupo: qualquer admin do Mac consegue ativar a
-# licenca e jogar mais um ggml-*.bin na pasta sem precisar de sudo.
-permissoes_dados() {
-    [ -n "$RAIZ" ] && return 0
-
-    # 1) pasta do sistema (modelos): root:admin, gravavel pelo grupo admin
-    base="/Library/Application Support/TranscriberLive"
-    if [ -d "$base" ]; then
-        /usr/sbin/chown -R root:admin "$base" 2>/dev/null
-        /bin/chmod -R ug+rwX,o+rX "$base" 2>/dev/null
-    fi
-
-    # 2) pasta do USUARIO — e aqui que o plugin grava a licenca.
-    #
-    # Este script roda como root. Se qualquer coisa criar essa pasta antes do
-    # usuario (uma versao anterior do instalador criava, e o mkdir do root deixa
-    # a pasta como root:staff sem escrita para o dono da home), o plugin verifica
-    # a licenca, tenta gravar, falha em silencio e volta a dizer "nenhuma licenca
-    # instalada nesta maquina". Foi exatamente o que aconteceu na v0.4.
-    #
-    # Nao criamos a pasta aqui de proposito: o plugin cria sozinho, com o dono
-    # certo. So consertamos se ela ja existir errada.
-    if [ -n "$USUARIO" ] && [ "$USUARIO" != "root" ] && [ -d "$CASA/Library/Application Support/TranscriberLive" ]; then
-        dono_atual=$(/usr/bin/stat -f%Su "$CASA/Library/Application Support/TranscriberLive" 2>/dev/null)
-        if [ "$dono_atual" != "$USUARIO" ]; then
-            aviso "a pasta de dados do usuario estava como '$dono_atual' — devolvendo para $USUARIO"
-        fi
-        /usr/sbin/chown -R "$USUARIO" "$CASA/Library/Application Support/TranscriberLive" 2>/dev/null
-        /bin/chmod -R u+rwX "$CASA/Library/Application Support/TranscriberLive" 2>/dev/null
-    fi
-}
-
-# ---------------------------------------------------------------- plugins e app
-echo ""
-echo "VST3 -> $DEST_VST3"
-if [ -d "$TMP/VST3" ]; then
-    for item in "$TMP"/VST3/*.vst3; do
-        [ -e "$item" ] || continue
-        instalar "$item" "$DEST_VST3" "root:admin"
-    done
-else
-    aviso "o payload nao trouxe a pasta VST3."
-fi
-
-echo ""
-echo "Audio Unit -> $DEST_AU"
-if [ -d "$TMP/Components" ]; then
-    for item in "$TMP"/Components/*.component; do
-        [ -e "$item" ] || continue
-        instalar "$item" "$DEST_AU" "root:admin"
-    done
-else
-    echo "  (sem componentes AU no payload)"
-fi
-
-echo ""
-echo "Aplicativo -> $DEST_APP"
-if [ -d "$TMP/Applications" ]; then
-    for item in "$TMP"/Applications/*.app; do
-        [ -e "$item" ] || continue
-        instalar "$item" "$DEST_APP" "root:admin"
-    done
-else
-    echo "  (sem aplicativo no payload)"
-fi
-
-# ---------------------------------------------------------------- modelos (pasta do usuario)
-echo ""
-echo "Modelos -> $DEST_MODELOS"
-if [ -d "$TMP/models" ]; then
-    /bin/mkdir -p "$DEST_MODELOS"
-    for modelo in "$TMP"/models/*.bin; do
-        [ -e "$modelo" ] || continue
-        nome="$(basename "$modelo")"
-        if [ -f "$DEST_MODELOS/$nome" ]; then
-            echo "  ja existe    $nome (mantido)"
-        else
-            echo "  copiando     $nome"
-            /usr/bin/ditto "$modelo" "$DEST_MODELOS/$nome" || aviso "nao consegui copiar $nome"
-        fi
-    done
-
-    permissoes_dados
-else
-    echo "  (sem modelos neste pacote — os escolhidos sao baixados pelos sub-pacotes)"
-fi
-
-/bin/mkdir -p "$DEST_MODELOS"   # so a do sistema; a do usuario o plugin cria
-permissoes_dados
-
-# ---------------------------------------------------------------- limpeza do payload
-# o zip so existe para atravessar o instalador; depois de distribuido, sai do disco
-if [ "$APAGAR_ZIP" -eq 1 ]; then
-    echo ""
-    if /bin/rm -f "$ZIP"; then
-        echo "payload temporario removido: $ZIP"
-    else
-        aviso "nao consegui remover $ZIP — pode apagar na mao, e so um arquivo temporario."
+# A licenca e gravada na pasta do USUARIO. Uma versao antiga deste instalador
+# criava essa pasta como root, e aí o plugin verificava a licenca, tentava
+# gravar, falhava calado e voltava a dizer "nenhuma licenca instalada".
+# Nao criamos a pasta aqui (o plugin cria, com o dono certo): so consertamos
+# se ela ja existir com o dono errado.
+U=$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
+if [ -n "$U" ] && [ "$U" != "root" ]; then
+    CASA=$(/usr/bin/dscl . -read "/Users/$U" NFSHomeDirectory 2>/dev/null | /usr/bin/awk '{print $2}')
+    PASTA="$CASA/Library/Application Support/TranscriberLive"
+    if [ -n "$CASA" ] && [ -d "$PASTA" ]; then
+        DONO=$(/usr/bin/stat -f%Su "$PASTA" 2>/dev/null)
+        [ "$DONO" != "$U" ] && echo "corrigindo dono da pasta do usuario ($DONO -> $U)"
+        /usr/sbin/chown -R "$U":staff "$PASTA" 2>/dev/null
+        /bin/chmod -R u+rwX "$PASTA" 2>/dev/null
     fi
 fi
-# lixo que o Finder/zip do macOS deixa
-/bin/rm -rf "$RAIZ/Applications/__MACOSX" "$RAIZ/Applications/.DS_Store" 2>/dev/null
 
-# ---------------------------------------------------------------- finalizacao
-echo ""
-# faz o macOS reconhecer os Audio Units novos sem precisar reiniciar
-/usr/bin/killall -9 AudioComponentRegistrar 2>/dev/null && echo "AudioComponentRegistrar reiniciado"
+# o AU aparece sem precisar reiniciar o Mac
+/usr/bin/killall -9 AudioComponentRegistrar 2>/dev/null
 
-# avisa se algum host esta aberto (os plugins novos so aparecem depois de reabrir)
 ABERTOS=""
-for app in "SuperRack Performer" "SuperRack" REAPER "Live Professor" Logic "MainStage" "Ableton Live"; do
-    if /usr/bin/pgrep -x "$app" >/dev/null 2>&1; then ABERTOS="$ABERTOS $app"; fi
+for app in "SuperRack Performer" "SuperRack" REAPER "Live Professor" Logic MainStage "Ableton Live"; do
+    /usr/bin/pgrep -x "$app" >/dev/null 2>&1 && ABERTOS="$ABERTOS $app"
 done
-[ -n "$ABERTOS" ] && aviso "estes programas estao abertos e precisam ser reiniciados:$ABERTOS"
+[ -n "$ABERTOS" ] && echo "AVISO: reinicie estes programas para ver os plugins novos:$ABERTOS"
 
-echo ""
-if [ "$falhou" -eq 0 ]; then
-    echo "Instalacao concluida com sucesso."
-else
-    echo "Instalacao terminou COM ERROS — veja as linhas 'ERRO' acima."
-fi
-echo "Log: $LOG"
-echo "=============================================================="
-
-exit "$falhou"
+echo "=== fim ==="
+exit 0

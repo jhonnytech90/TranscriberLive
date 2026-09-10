@@ -1,204 +1,112 @@
-# Instalador do Transcriber Live (macOS)
+# Instaladores do macOS
 
-## Por que deu "o pacote está tentando instalar conteúdo no volume do sistema"
+Dois pacotes, gerados juntos:
 
-Desde o Catalina o macOS recusa pacotes cujo *payload* aponte para dentro da pasta
-do usuário (`~/Library/Application Support`, por exemplo). O instalador roda como root,
-antes de qualquer sessão de usuário, então "a home do usuário" não existe para ele —
-e o macOS bloqueia o pacote inteiro em vez de adivinhar.
-
-A solução é a mesma do seu instalador do SpotifyDownload: **o payload leva só um zip
-para uma pasta permitida** (`/Applications`), e o `postinstall` move esse zip para um
-temporário, descompacta e leva cada coisa para o lugar certo — inclusive a pasta do
-usuário, que o payload não consegue tocar. No fim o zip é apagado, então não sobra nada
-em `/Applications`.
-
-Fluxo:
-
-```
-payload  ->  /Applications/TranscriberLive-payload.zip
-postinstall -> move para /private/tmp, extrai e distribui:
-                 VST3/          -> /Library/Audio/Plug-Ins/VST3
-                 Components/    -> /Library/Audio/Plug-Ins/Components
-                 Applications/  -> /Applications
-                 models/        -> /Library/Application Support/TranscriberLive/models
-             -> apaga o zip
-```
-
-## Arquivos aqui
-
-| Arquivo | Para que serve |
+| Arquivo | O que faz |
 |---|---|
-| `montar-instalador.command` | **duplo clique** — monta o payload e gera o `.pkg` inteiro |
-| `capa.png` / `capa-dark.png` | capa lateral da janela do Installer (claro / escuro) |
-| `scripts/postinstall` | o script que distribui tudo depois da instalação |
-| `postinstall-minimo.sh` | a mesma lógica em 60 linhas, só para depurar na mão |
-| `Introducao.txt` | tela de introdução do instalador |
-| `binarios/` | *(você cria)* onde ficam os `.vst3`, `.component` e `.app` |
-| `modelos/` | *(você cria, opcional)* `ggml-*.bin` para já sair instalado |
+| `TranscriberLive-0.4-macOS.pkg` | instala tudo — **os modelos vêm embutidos, o cliente não baixa nada** |
+| `TranscriberLive-0.4-macOS-Desinstalador.pkg` | remove tudo, **preservando a licença** |
 
-## A capa lateral
+## O caminho fácil: deixar o GitHub montar
 
-O painel da esquerda da janela do instalador é o elemento `<background>` do
-`distribution.xml`, e o `montar-instalador.command` já o gera para você: basta os
-arquivos `capa.png` e `capa-dark.png` existirem aqui.
+O job `installer-macos` do `build.yml` roda depois da compilação: baixa os
+binários, baixa os modelos (conferindo o SHA-256), monta os dois pacotes,
+**instala e desinstala de verdade no runner** para provar que funcionam, e
+publica na Release **`macos-latest`**.
 
-- `capa.png` — arte escura sobre fundo transparente, para o modo claro do macOS
-- `capa-dark.png` — a versão esmaecida/clara, para o modo escuro
+O link é fixo, então serve para mandar ao cliente:
 
-As duas já estão prontas aqui, em 700 × 1400 px (PNG com transparência). O painel real
-tem cerca de 165 × 380 pt, e o alinhamento usado é `bottomleft` com escala
-`proportional` — ou seja, a arte encosta embaixo à esquerda e é reduzida sem distorcer.
-Por isso o logo em cima e o QR embaixo funcionam bem, e o miolo vazio some.
+```
+github.com/jhonnytech90/TranscriberLive/releases/tag/macos-latest
+```
 
-Se quiser trocar a arte, mantenha a proporção perto de 1:2 e deixe transparência no
-lugar do fundo: fundo branco chapado aparece como um retângulo branco no modo escuro.
-
-## O caminho mais fácil: deixar o GitHub montar
-
-O `build.yml` tem um job `installer-macos` que roda depois da compilação: baixa os
-binários, monta o `.pkg` completo e sobe como artefato **`TranscriberLive-macOS-Installer`**
-na mesma página da build. Não precisa de nada instalado no seu Mac.
+Publicamos em Release em vez de artefato de propósito: o instalador tem ~450 MB
+e a cota de artefatos de conta free é 500 MB — dois builds e a cota estoura.
+Release não conta nessa cota.
 
 ## Montando no seu Mac
 
-1. Baixe os binários do GitHub Actions e descompacte dentro de uma pasta `binarios`
-   aqui do lado. Não precisa organizar — o script procura sozinho.
-2. Opcional: crie uma pasta `modelos` com `ggml-*.bin` para **embutir** algum modelo
-   no `.pkg` em vez de deixar o cliente baixar. Sem ela, o instalador sai leve
-   (só o VAD, 0,9 MB) e o cliente escolhe o que baixar na tela Personalizar.
-3. Duplo clique em `montar-instalador.command`.
-4. O `.pkg` sai em `saida/TranscriberLive-0.4.pkg`.
+```bash
+./montar-instalador.command [pasta-dos-binarios] [pasta-dos-modelos]
+```
 
-Não precisa do Packages nem de nenhum app extra — usa o `pkgbuild` e o `productbuild`
-que já vêm no macOS.
+Sem argumentos ele procura sozinho:
 
-## Se preferir usar o Packages (interface gráfica)
+- **binários:** `./binarios` → `/Applications/arquivos` → `../build`
+- **modelos:** `./modelos` → `/Applications/arquivos/models` → `/Library/Application Support/TranscriberLive/models`
 
-Agora fica simples, porque o zip vai por payload:
+Os dois `.pkg` saem em `saida/`.
 
-1. Novo projeto → **Raw Package**.
-2. Aba **Payload**: em `/Applications`, arraste o `scripts/TranscriberLive-payload.zip`
-   (rode o `montar-instalador.command` uma vez para gerá-lo). **Só o zip**, nada dentro
-   de `~/Library` — é isso que resolve o erro.
-3. Aba **Scripts** → *Post-installation*: escolha `scripts/postinstall`.
-4. Aba **Settings**: identificador `com.jhonatanmiikael.transcriberlive`, versão 0.4,
-   "Require admin password" ligado.
-5. Aba **Presentation** → *Background*: escolha `capa.png` (e `capa-dark.png` no campo
-   do modo escuro), alinhamento **Bottom Left**, escala **Proportional**.
-   Em *Introduction*, aponte o `Introducao.txt`.
+## Como o instalador funciona
 
-O `postinstall` procura o zip em vários lugares (`/Applications`, ao lado do script,
-`/private/tmp`), então funciona tanto pelo caminho automático quanto pelo Packages.
-
-Pelo Packages você perde a tela de escolha dos modelos — ela vem do
-`distribution.xml` que o `montar-instalador.command` gera. Se quiser as duas coisas,
-use o caminho automático.
-
-## O que o script instala, e onde
+É **payload puro**: o macOS coloca cada arquivo no lugar sozinho. Sem zip, sem
+`mv`, sem download.
 
 | Conteúdo | Destino |
 |---|---|
 | `.vst3` | `/Library/Audio/Plug-Ins/VST3` |
-| `.component` (AU) | `/Library/Audio/Plug-Ins/Components` |
+| `.component` | `/Library/Audio/Plug-Ins/Components` |
 | `.app` | `/Applications` |
 | `ggml-*.bin` | `/Library/Application Support/TranscriberLive/models` |
 
-Ele ainda: remove a quarentena dos bundles,
-aplica assinatura ad-hoc se algum bundle vier sem assinatura, reinicia o
-`AudioComponentRegistrar` para o AU aparecer sem reiniciar o Mac, e avisa se algum host
-estiver aberto na hora.
+Os modelos vão para a pasta **de sistema**, não para a home. Duas razões: o
+payload de um `.pkg` pode escrever ali (o erro *"instalar conteúdo no volume do
+sistema"* só aparece mirando a pasta do usuário), e vale para todos os usuários
+do Mac. O plugin já procura nessa pasta.
 
-Modelos que já existem **não são sobrescritos** — quem já tem um `ggml-medium` não perde
-o download ao reinstalar.
+O `postinstall` faz só o que o payload não consegue: tira a quarentena, ajusta
+permissões, reinicia o `AudioComponentRegistrar` para o AU aparecer sem
+reiniciar o Mac, e conserta a pasta de dados do usuário caso ela esteja com o
+dono errado (herança de uma versão antiga que a criava como root — era isso que
+travava a ativação da licença).
 
-## Modelos de voz: escolha na instalação
+## Como o desinstalador funciona
 
-O `.pkg` mostra a tela **Personalizar** com os modelos em caixinhas. Isso não é
-um truque: cada modelo é um sub-pacote cujo `postinstall` baixa aquele arquivo do
-Hugging Face. É o mesmo mecanismo que o Installer usa para qualquer instalação
-opcional, então a tela é nativa.
+Remove os quatro plugins, o aplicativo, os modelos, as preferências e os
+recibos do `pkgutil`.
 
-> **Cuidado ao mexer nisso.** Cada sub-pacote de modelo tem um *payload mínimo*
-> — um arquivo-marcador em `modelos-pedidos/`, que o próprio script apaga no fim.
-> Não tire. Com `pkgbuild --nopayload` o `PackageInfo` sai **sem** o elemento
-> `<payload>`, e o Installer trata o sub-pacote como "nada para instalar": não
-> roda o `postinstall` e conclui na hora, sem baixar nada. Foi exatamente o bug
-> da primeira versão deste instalador. O sintoma é traiçoeiro porque a instalação
-> diz "concluída com sucesso".
+**A licença é preservada de propósito.** Ela é presa àquela máquina; apagar
+significaria o cliente pedir outra numa reinstalação. O texto de abertura do
+desinstalador diz isso e mostra o caminho, para quem quiser apagar na mão.
 
-| Modelo | Tamanho | Quando usar |
-|---|---|---|
-| Silero VAD | 0,9 MB | **vai dentro do `.pkg`**, sempre instalado |
-| tiny | 74 MB | Mac fraco, aceita errar |
-| base | 141 MB | Mac modesto |
-| **small** | **465 MB** | **marcado por padrão — recomendado para show** |
-| medium | 1,4 GB | mais preciso, exige CPU boa |
-| large-v3-turbo | 1,5 GB | o melhor, só em Mac forte |
+> **Payload mínimo — não tire.** O desinstalador carrega um arquivo-marcador
+> só para ter payload. Com `pkgbuild --nopayload` o `PackageInfo` sai sem o
+> elemento `<payload>`, e dentro de uma distribuição do `productbuild` o
+> Installer trata o pacote como "nada a fazer": **não roda o script e conclui
+> na hora**. O próprio script apaga o marcador no fim.
 
-O VAD é embutido de propósito: são 0,9 MB e sem ele o Receiver não separa fala
-de vazamento. Assim o plugin funciona mesmo instalando num Mac sem internet.
+## Por que desinstalador separado, e não uma opção no instalador
 
-Cada download tem o **SHA-256 conferido**; arquivo corrompido é descartado em vez
-de instalado. Modelo que já existe na pasta não é baixado nem sobrescrito. E um
-download que falha **não derruba a instalação** — os plugins já estão no lugar, e
-o log diz onde colocar o `ggml-*.bin` depois.
+O Installer do macOS não tem modo "remover". A opção viraria uma caixinha na
+tela *Personalizar* — e cliente apressado desinstala achando que instala. Todo
+mundo que vende plugin (Waves, iZotope, Antares) entrega um desinstalador à
+parte, pelo mesmo motivo.
 
-Os modelos vão para `/Library/Application Support/TranscriberLive/models`, não
-para a home do usuário. O instalador roda como root, e "a home certa" é um chute
-quando existe mais de uma conta ou quando alguém digita a senha de outro admin.
-O plugin procura nas duas pastas, então quem já tinha modelos na pasta antiga
-não perde nada.
-
-**Uma coisa honesta sobre a experiência:** enquanto baixa, o Installer.app só
-mostra "Executando scripts do pacote" com a barra indeterminada — ele não deixa
-um pacote desenhar progresso próprio sem um plugin de instalador em Objective-C.
-Para o cliente não achar que travou, o script dispara notificações do macOS
-("Baixando o modelo small...", "Modelo small pronto") e escreve o progresso no
-log. Com o `small` são uns 2 minutos numa internet boa; com o `large-v3-turbo`,
-bem mais.
-
-Para acompanhar o download durante um teste:
+## Testando
 
 ```bash
+sudo installer -pkg "saida/TranscriberLive-0.4-macOS.pkg" -target /
 tail -f /private/tmp/transcriberlive-install.log
+
+sudo installer -pkg "saida/TranscriberLive-0.4-macOS-Desinstalador.pkg" -target /
+tail -f /private/tmp/transcriberlive-desinstalar.log
 ```
 
-## Testando antes de mandar para alguém
+O CI já faz exatamente isso a cada build, e falha se o desinstalador deixar
+qualquer coisa para trás.
+
+## Assinatura
+
+Os `.pkg` saem **sem assinatura**: o macOS do cliente pede *Abrir mesmo assim*
+em Ajustes → Privacidade e Segurança. Para eliminar isso é preciso conta de
+desenvolvedor Apple (99 dólares/ano):
 
 ```bash
-sudo installer -pkg "saida/TranscriberLive-0.4.pkg" -target /
-cat /private/tmp/transcriberlive-install.log
-```
-
-O log mostra cada arquivo copiado e qualquer erro. Se algo falhar, o instalador acusa
-falha em vez de dizer "sucesso" com o sistema pela metade.
-
-Para testar o script sozinho, sem tocar no sistema:
-
-```bash
-TL_TEST_ROOT=/tmp/teste bash scripts/postinstall
-find /tmp/teste
-```
-
-## Assinatura e notarização
-
-O `.pkg` sai **sem assinatura**. No Mac do cliente o macOS vai reclamar de
-"desenvolvedor não identificado" e ele terá que liberar em Ajustes → Privacidade e
-Segurança → "Abrir mesmo assim".
-
-Para vender sem esse atrito você precisa de uma conta de desenvolvedor Apple
-(99 dólares/ano). Com ela, o fluxo é assinar os bundles, assinar o pkg e notarizar:
-
-```bash
-codesign --force --options runtime --sign "Developer ID Application: SEU NOME (TEAMID)" \
-         "Transcriber Live Receiver.vst3"
 productsign --sign "Developer ID Installer: SEU NOME (TEAMID)" \
-            saida/TranscriberLive-0.4.pkg saida/TranscriberLive-0.4-assinado.pkg
-xcrun notarytool submit saida/TranscriberLive-0.4-assinado.pkg \
+            saida/TranscriberLive-0.4-macOS.pkg saida/assinado.pkg
+xcrun notarytool submit saida/assinado.pkg \
       --apple-id SEU@EMAIL --team-id TEAMID --password SENHA-DE-APP --wait
-xcrun stapler staple saida/TranscriberLive-0.4-assinado.pkg
+xcrun stapler staple saida/assinado.pkg
 ```
 
-Enquanto não tiver a conta, vale escrever no e-mail de entrega como liberar o
-instalador — é a dúvida número um de quem compra plugin não assinado.
+Vale assinar também os `.vst3`, `.component` e o `.app` **antes** de montar.

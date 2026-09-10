@@ -79,11 +79,13 @@ jobs:
           path: Instalador/Windows/saida/*.exe
 
   # ---------------------------------------------------------------------------
-  # Instalador do macOS (.pkg unico, com escolha e download dos modelos)
+  # Instalador do macOS (.pkg offline, modelos embutidos) + desinstalador
   # ---------------------------------------------------------------------------
   installer-macos:
     needs: build
     runs-on: macos-14
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -93,18 +95,87 @@ jobs:
           name: TranscriberLive-macOS
           path: Instalador/binarios
 
-      - name: Confere o que chegou
-        run: find Instalador/binarios -maxdepth 5 \( -name "*.vst3" -o -name "*.component" -o -name "*.app" \)
+      - name: Baixa os modelos (ficam EMBUTIDOS no instalador)
+        run: |
+          set -e
+          mkdir -p Instalador/modelos
+          baixar() {   # baixar <arquivo> <url> <sha256>
+            echo "  $1"
+            curl -fL --retry 3 --retry-delay 5 --connect-timeout 30 -sS -o "Instalador/modelos/$1" "$2"
+            GOT=$(shasum -a 256 "Instalador/modelos/$1" | awk '{print $1}')
+            if [ "$GOT" != "$3" ]; then
+              echo "::error::SHA-256 de $1 nao confere (esperado $3, obtido $GOT)"
+              exit 1
+            fi
+          }
+          baixar ggml-silero-v5.1.2.bin \
+            "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin" \
+            29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf
+          baixar ggml-small.bin \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin" \
+            1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b
+          ls -lh Instalador/modelos
 
-      - name: Monta o instalador
+      - name: Monta o instalador e o desinstalador
         env:
           TL_NAO_INTERATIVO: "1"
         run: |
-          chmod +x Instalador/montar-instalador.command Instalador/scripts/postinstall
-          Instalador/montar-instalador.command "$PWD/Instalador/binarios"
+          chmod +x Instalador/montar-instalador.command \
+                   Instalador/scripts/postinstall \
+                   Instalador/desinstalador/scripts/postinstall
+          Instalador/montar-instalador.command "$PWD/Instalador/binarios" "$PWD/Instalador/modelos"
+          ls -lh Instalador/saida
 
-      - name: Upload
+      - name: Confere o que vai dentro do instalador
+        run: |
+          set -e
+          cd "$RUNNER_TEMP" && rm -rf conf
+          pkgutil --expand "$GITHUB_WORKSPACE/Instalador/saida/"TranscriberLive-*-macOS.pkg conf
+          echo "### Arquivos do instalador" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          lsbom -s conf/base.pkg/Bom | grep -vE '/\._|/Contents/' | sort >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # trava de seguranca: os 7 itens tem que estar la
+          for E in 'VST3/Transcriber Live Receiver.vst3' 'VST3/Transcriber Live Display.vst3' \
+                   'Components/Transcriber Live Receiver.component' 'Components/Transcriber Live Display.component' \
+                   'Applications/Transcriber Live Display.app' \
+                   'models/ggml-small.bin' 'models/ggml-silero-v5.1.2.bin'; do
+            lsbom -s conf/base.pkg/Bom | grep -qF "$E" || { echo "::error::faltou no pacote: $E"; exit 1; }
+          done
+          echo "Instalador completo: 4 plugins + app + 2 modelos."
+
+      - name: Testa a desinstalacao de verdade
+        run: |
+          set -e
+          sudo installer -pkg "$GITHUB_WORKSPACE/Instalador/saida/"TranscriberLive-*-macOS.pkg -target /
+          test -d "/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3"
+          test -f "/Library/Application Support/TranscriberLive/models/ggml-small.bin"
+          echo "instalado ok"
+          sudo installer -pkg "$GITHUB_WORKSPACE/Instalador/saida/"*Desinstalador.pkg -target /
+          for X in "/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3" \
+                   "/Library/Audio/Plug-Ins/Components/Transcriber Live Receiver.component" \
+                   "/Applications/Transcriber Live Display.app" \
+                   "/Library/Application Support/TranscriberLive"; do
+            if [ -e "$X" ]; then echo "::error::o desinstalador deixou para tras: $X"; exit 1; fi
+          done
+          echo "desinstalado ok — nada ficou para tras"
+
+      - name: Publica na Release "macos-latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          gh release view macos-latest >/dev/null 2>&1 || \
+            gh release create macos-latest --title "Transcriber Live — macOS (build mais recente)" \
+               --notes "Instalador e desinstalador do macOS, gerados automaticamente a cada build. Os modelos de voz ja vem embutidos: o cliente nao baixa nada." \
+               --latest=false
+          gh release upload macos-latest Instalador/saida/*.pkg --clobber
+          echo "### Download" >> "$GITHUB_STEP_SUMMARY"
+          echo "Instalador e desinstalador em <${{ github.server_url }}/${{ github.repository }}/releases/tag/macos-latest>" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload do desinstalador (pequeno, fica como artefato tambem)
         uses: actions/upload-artifact@v4
         with:
-          name: TranscriberLive-macOS-Installer
-          path: Instalador/saida/*.pkg
+          name: TranscriberLive-macOS-Desinstalador
+          path: Instalador/saida/*Desinstalador.pkg
+          retention-days: 30
