@@ -111,11 +111,41 @@ void TranscriptionEngine::handleModelRequests()
 
         if (ctx != nullptr) { whisper_free (ctx); ctx = nullptr; }
 
+        // CPU velha demais: avisar em vez de derrubar o host.
+        //
+        // No macOS o ggml e compilado COM AVX2/FMA de proposito (desligar
+        // custaria quase o dobro da velocidade em todo Mac Intel). O preco e
+        // que uma CPU anterior a 2013 nao tem essas instrucoes — e sem esta
+        // checagem o resultado e uma instrucao ilegal no meio do ggml, que mata
+        // o processo do host inteiro, sem dialogo e sem log. Com ela, o
+        // Receiver simplesmente diz o que houve e o audio segue passando.
+       #if defined (TL_REQUIRES_AVX2) && ! defined (__aarch64__) && ! defined (__arm64__)
+        if (! juce::SystemStats::hasAVX2() || ! juce::SystemStats::hasFMA3())
+        {
+            const juce::ScopedLock sl (statusLock);
+            status = juce::String (juce::CharPointer_UTF8 (
+                "Esta CPU n\xc3\xa3o tem AVX2/FMA \xe2\x80\x94 necess\xc3\xa1rio nesta vers\xc3\xa3o. "
+                "O \xc3\xa1udio passa normal, mas n\xc3\xa3o h\xc3\xa1 transcri\xc3\xa7\xc3\xa3o."));
+            return;
+        }
+       #endif
+
         auto cparams = whisper_context_default_params();
-        cparams.use_gpu    = true;       // Metal no macOS; ignorado se indisponível
-       #if JUCE_MAC
-        cparams.flash_attn = true;       // só com Metal; no backend de CPU pode abortar
+
+        // GPU e flash attention SO no Apple Silicon.
+        //
+        // Num binario universal cada fatia e compilada em separado, entao
+        // __aarch64__ aqui significa exatamente "esta fatia e a do Apple
+        // Silicon". Em Mac Intel antigo o Metal existe mas e de uma geracao
+        // que o ggml nao cobre bem, e o flash attention no backend de CPU
+        // dispara GGML_ASSERT -> abort, que mata o host inteiro sem aviso.
+        // Perder um pouco de velocidade num Mac de 2013 e melhor do que
+        // derrubar o SuperRack no meio do show.
+       #if JUCE_MAC && defined (__aarch64__)
+        cparams.use_gpu    = true;
+        cparams.flash_attn = true;
        #else
+        cparams.use_gpu    = false;
         cparams.flash_attn = false;
        #endif
 

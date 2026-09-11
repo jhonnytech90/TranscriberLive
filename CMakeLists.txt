@@ -55,11 +55,22 @@ set(GGML_NATIVE            OFF CACHE BOOL "" FORCE)   # binário portátil (não
 # TRANSCRIBER_PORTABLE_CPU=OFF -> deixa o ggml usar AVX2/FMA (mais rápido, exige CPU 2013+)
 option(TRANSCRIBER_PORTABLE_CPU "Compila o ggml sem AVX/AVX2 (roda em qualquer x86-64)" ON)
 
+# No macOS isto NAO se aplica, de propósito (decisão consciente, não esquecimento):
+# desligar AVX2 custaria de 1,5x a 2x de velocidade em TODO Mac Intel — incluindo
+# os bons — só para salvar um Mac de 2013 sem AVX2. Não vale a troca. Em vez
+# disso, o plugin detecta a CPU em tempo de execução e avisa, em vez de morrer
+# com instrução ilegal (ver TL_REQUIRES_AVX2 abaixo e TranscriptionEngine.cpp).
+# Em Apple Silicon nada disso importa: o arm64 usa NEON.
+set(TL_CPU_DEFS "")
 if(TRANSCRIBER_PORTABLE_CPU AND NOT APPLE)
     foreach(f GGML_AVX GGML_AVX2 GGML_AVX512 GGML_AVX_VNNI GGML_FMA GGML_F16C
               GGML_BMI2 GGML_AVX512_VBMI GGML_AVX512_VNNI GGML_AVX512_BF16)
         set(${f} OFF CACHE BOOL "" FORCE)
     endforeach()
+else()
+    # o ggml vai usar AVX2/FMA: o plugin precisa conferir antes de carregar o
+    # modelo, senão a CPU antiga derruba o host inteiro sem mensagem
+    set(TL_CPU_DEFS TL_REQUIRES_AVX2=1)
 endif()
 
 if(APPLE)
@@ -100,7 +111,8 @@ set(TL_COMMON_DEFS
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    ${TL_CPU_DEFS})
 
 # recursos compartilhados (página web do celular) + hub
 juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html Resources/logoheader.png)
