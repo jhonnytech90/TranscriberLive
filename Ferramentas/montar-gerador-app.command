@@ -65,8 +65,18 @@ done
 
 # ---------------------------------------------------------------- 3. monta
 rm -rf build-app saida-app "Gerador de Licencas.spec"
+mkdir -p build-app/pyi-cache
 
-ARGS=(--noconfirm --clean --windowed
+# Cache do PyInstaller numa pasta NOSSA, e nao na do usuario.
+#
+# O padrao e ~/Library/Application Support/pyinstaller. Se alguma vez o
+# PyInstaller rodou com sudo naquela maquina, subpastas dali ficam com dono
+# root -- e a montagem falha com "Permission denied" num caminho que nada tem
+# a ver com este projeto. Apontando o cache para ca, o problema deixa de
+# existir e nao precisamos mexer em permissao de sistema nenhuma.
+export PYINSTALLER_CONFIG_DIR="$PWD/build-app/pyi-cache"
+
+ARGS=(--noconfirm --windowed
       --name "Gerador de Licencas"
       --distpath saida-app
       --workpath build-app
