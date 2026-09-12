@@ -109,7 +109,8 @@ namespace tl
         if (saida == nullptr || bytesEscritos < 8 * 1024 * 1024)
             return;
 
-        saida->writeText ("--- arquivo cheio, continuando em outro ---" + juce::String (juce::newLine), false, false, nullptr);
+        saida->writeText (juce::String ("--- arquivo cheio, continuando em outro ---") + juce::newLine,
+                          false, false, nullptr);
         saida->flush();
         saida.reset();
         abrirArquivo();
@@ -413,14 +414,14 @@ namespace tl
         juce::StringArray fim;
         for (int i = linhas.size() - numLinhas; i < linhas.size(); ++i)
             fim.add (linhas[i]);
-        return "(...)" + juce::String (juce::newLine) + fim.joinIntoString (juce::newLine);
+        return juce::String ("(...)") + juce::newLine + fim.joinIntoString (juce::newLine);
     }
 
     juce::String Log::diagnostico()
     {
-        return "Transcriber Live -- diagnostico" + juce::String (juce::newLine)
+        return juce::String ("Transcriber Live -- diagnostico") + juce::newLine
              + "arquivo: " + arquivo.getFullPathName() + juce::newLine
-             + juce::String (juce::newLine)
+             + juce::newLine
              + tail (400);
     }
 
