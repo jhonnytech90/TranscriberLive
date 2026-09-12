@@ -255,9 +255,48 @@ void TranscriptionEngine::handleModelRequests()
 //==============================================================================
 void TranscriptionEngine::processPendingAudio()
 {
-    const int ready = fifo.getNumReady();
+    int ready = fifo.getNumReady();
     if (ready <= 0)
         return;
+
+    // ---- atrasou demais: joga o passado fora e pula para o presente --------
+    //
+    // Ate agora todo audio era sagrado: se a maquina nao acompanhava, a fila
+    // enchia e o texto continuava saindo minutos atrasado o show inteiro, sem
+    // nunca se recuperar. Num palco isso e PIOR do que nao transcrever: o
+    // tecnico le "abaixa meu retorno" enquanto o cantor ja pediu outra coisa.
+    //
+    // Entao acima do limite descartamos o acumulado e recomecamos do audio de
+    // agora. Perde-se frase quando a CPU nao da conta -- mas o que aparece na
+    // tela e sempre o presente.
+    const int limite = (int) (kSampleRate * kMaxAtrasoSeg);
+    if (ready > limite)
+    {
+        const int descartar = ready - (int) (kSampleRate * kAtrasoAlvoSeg);
+
+        int s1, t1, s2, t2;
+        fifo.prepareToRead (descartar, s1, t1, s2, t2);
+        fifo.finishedRead (t1 + t2);
+
+        // a continuidade quebrou: comecar frase nova, sem juntar os dois lados
+        windowFill = 0;
+        segment.clear();
+        inSpeech = false;
+        speechActive.store (false);
+        silenceSamples = 0;
+        samplesSinceLastPartial = 0;
+        if (vctx != nullptr) whisper_vad_reset_state (vctx);
+
+        totalDescartados.fetch_add (1);
+        TL_LOGW ("motor", juce::String::formatted (
+            "atraso de %.1f s: descartei %.1f s de audio para voltar ao tempo real "
+            "(a maquina nao acompanha este modelo)",
+            ready / (double) kSampleRate, (t1 + t2) / (double) kSampleRate));
+
+        ready = fifo.getNumReady();
+        if (ready <= 0)
+            return;
+    }
 
     int start1, size1, start2, size2;
     fifo.prepareToRead (ready, start1, size1, start2, size2);
@@ -448,7 +487,22 @@ juce::String TranscriptionEngine::transcribe (const std::vector<float>& audio, b
     p.entropy_thold     = 2.4f;
     p.logprob_thold     = -1.0f;
     p.max_tokens        = 0;
-    p.audio_ctx         = 0;
+
+    // ---- audio_ctx: so processa o tamanho da frase, nao 30 s sempre --------
+    //
+    // O encoder do whisper trabalha numa janela fixa de 30 s (1500 quadros).
+    // Com audio_ctx=0 ele paga o custo dos 30 s inteiros mesmo para uma frase
+    // de 3 -- e o custo da atencao cresce com o QUADRADO desse numero. Num
+    // MacBook Air de 2 nucleos isso deu mais de 170 segundos numa unica frase,
+    // com a fila entupida e nada aparecendo na tela.
+    //
+    // Limitando ao tamanho real (com folga, e no minimo 256 quadros para nao
+    // estragar o reconhecimento das frases curtas), a conta cai junto.
+    {
+        const double duracao = juce::jmax (1.0, audio.size() / (double) kSampleRate);
+        const int    quadros = (int) std::ceil (duracao / 30.0 * 1500.0) + 64;
+        p.audio_ctx = juce::jlimit (256, 1500, quadros);
+    }
 
     // permite abortar a decodificação se o plugin for descarregado no meio
     p.abort_callback = [] (void* user) -> bool { return static_cast<juce::Thread*> (user)->threadShouldExit(); };

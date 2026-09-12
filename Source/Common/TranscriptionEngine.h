@@ -24,6 +24,11 @@ public:
     static constexpr int kSampleRate = 16000;
     static constexpr int kVadWindow  = 512;   // Silero VAD: 512 amostras @16k = 32 ms
 
+    /** Atraso acima do qual o audio acumulado e jogado fora, e para quanto ele
+        volta. Num show, texto atrasado engana mais do que ajuda. */
+    static constexpr float kMaxAtrasoSeg   = 3.0f;
+    static constexpr float kAtrasoAlvoSeg  = 0.5f;
+
     struct Line
     {
         juce::String text;
