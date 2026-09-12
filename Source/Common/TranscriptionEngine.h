@@ -84,6 +84,13 @@ public:
     float getLastVadProb() const noexcept { return lastVadProb.load(); }
     bool  isTranscribing() const noexcept { return transcribing.load(); }
     int   getPendingSamples() const noexcept { return fifo.getNumReady(); }   // atraso do worker
+    float getLastRtf() const noexcept     { return ultimoRtf.load(); }
+
+    /** True UMA vez, quando o motor conclui que esta maquina nao acompanha o
+        modelo atual (varias frases seguidas mais lentas que o tempo real).
+        Quem consome decide o que fazer -- aqui nao se troca modelo sozinho,
+        para nao mexer no estado do processador de dentro da thread do worker. */
+    bool consumirAvisoDeLentidao() noexcept { return maquinaLenta.exchange (false); }
 
     /** Cópia das linhas atuais (a UI chama com timer). */
     std::vector<Line> getLines() const;
@@ -138,6 +145,16 @@ private:
     std::atomic<int>   totalSegmentos { 0 };
     std::atomic<int>   totalDescartados { 0 };
     int                vitalsId = 0;
+
+    // Deteccao de "esta maquina nao da conta deste modelo".
+    // Exige varias frases seguidas acima do tempo real: uma frase lenta
+    // isolada e normal (o host deu um pico, outro plugin abriu), e trocar de
+    // modelo por causa dela seria pior que o problema.
+    static constexpr float kRtfLimite = 1.0f;
+    static constexpr int   kFrasesLentasSeguidas = 3;
+    int                frasesLentas = 0;
+    bool               jaAvisouLento = false;
+    std::atomic<bool>  maquinaLenta { false };
 
     // Config
     mutable juce::CriticalSection settingsLock;

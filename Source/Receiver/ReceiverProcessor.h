@@ -64,6 +64,10 @@ public:
     //-- Modelos (pasta padrão: <dados do usuário>/TranscriberLive/models) ---------
     juce::StringArray getAvailableModels() const;        // nomes de arquivo ggml-*.bin (sem o VAD)
     juce::String      getSelectedModel() const           { return selectedModel; }
+
+    /** Vazio = nada aconteceu. Preenchido = o plugin trocou de modelo sozinho
+        porque a maquina nao acompanhava (a UI mostra isso ao usuario). */
+    juce::String      getTrocaAutomatica() const         { return trocaAutomatica; }
     void              selectModel (const juce::String& fileName);
     bool              hasVadModel() const                { return vadFile.existsAsFile(); }
 
@@ -96,6 +100,9 @@ private:
     void send (const tl::Message& m);
     tl::Message makeMessage (const juce::String& type) const;
     void autoSelectModel();
+    /** Proximo modelo mais leve que o atual, entre os instalados. Vazio se o
+        atual ja for o mais leve. */
+    juce::String escolherModeloMaisLeve (const juce::String& atual) const;
     void loadModels();
     void refreshLicense();
 
@@ -121,6 +128,7 @@ private:
     std::atomic<float> inputLevelDb { -100.0f };
 
     juce::String selectedModel;
+    juce::String trocaAutomatica;   // preenchido quando o plugin rebaixa o modelo sozinho
     juce::File   modelFile, vadFile;
 
     mutable juce::CriticalSection identityLock;

@@ -565,6 +565,23 @@ juce::String TranscriptionEngine::transcribe (const std::vector<float>& audio, b
     else
         TL_LOGI ("whisper", resumo);
 
+    // ---- a maquina da conta deste modelo? ----------------------------------
+    // So conta frase final: as parciais sao curtas e dao leitura otimista.
+    if (isFinal)
+    {
+        if (rtf > kRtfLimite) ++frasesLentas;
+        else                  frasesLentas = 0;
+
+        if (frasesLentas >= kFrasesLentasSeguidas && ! jaAvisouLento)
+        {
+            jaAvisouLento = true;          // uma vez por sessao, sem ficar alternando
+            maquinaLenta.store (true);
+            TL_LOGW ("motor", juce::String::formatted (
+                "%d frases seguidas acima do tempo real (ultimo RTF %.2f) -- "
+                "esta maquina nao da conta deste modelo", frasesLentas, rtf));
+        }
+    }
+
     result = result.trim();
 
     if (looksLikeHallucination (result))

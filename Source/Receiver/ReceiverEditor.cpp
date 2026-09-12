@@ -314,6 +314,15 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
     if (eng.isModelLoaded())
         s += processor.hasVadModel() ? "  |  VAD ok" : utf8 ("  |  VAD n\xc3\xa3o encontrado (ggml-silero*.bin)");
     if (eng.isTranscribing()) s += "  |  transcrevendo...";
+
+    // Se o plugin rebaixou o modelo sozinho, o usuario PRECISA ver -- senao ele
+    // ve o modelo mudar na lista e conclui que o plugin esta com defeito.
+    // Fica na frente de tudo, porque e a informacao mais importante da tela
+    // naquele momento.
+    if (const auto troca = processor.getTrocaAutomatica(); troca.isNotEmpty())
+        s = utf8 ("Modelo trocado automaticamente (") + troca
+          + utf8 ("): esta mÃ¡quina nÃ£o acompanhava o tempo real.   |   ") + s;
+
     if (statusLabel.getText() != s) statusLabel.setText (s, juce::dontSendNotification);
 
     // última frase reconhecida (só conferência; o acompanhamento é no Display / celular)

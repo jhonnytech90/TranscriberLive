@@ -132,6 +132,11 @@ jobs:
           baixar ggml-small.bin \
             "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin" \
             1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b
+          # base: para as maquinas que nao aguentam o small. ~3x mais rapido.
+          # O plugin escolhe sozinho qual usar e troca se nao acompanhar.
+          baixar ggml-base.bin \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" \
+            60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe
           ls -lh Instalador/modelos
 
       - name: Monta o instalador e o desinstalador
@@ -157,10 +162,10 @@ jobs:
           for E in 'VST3/Transcriber Live Receiver.vst3' 'VST3/Transcriber Live Display.vst3' \
                    'Components/Transcriber Live Receiver.component' 'Components/Transcriber Live Display.component' \
                    'Applications/Transcriber Live Display.app' \
-                   'models/ggml-small.bin' 'models/ggml-silero-v5.1.2.bin'; do
+                   'models/ggml-small.bin' 'models/ggml-base.bin' 'models/ggml-silero-v5.1.2.bin'; do
             lsbom -s conf/base.pkg/Bom | grep -qF "$E" || { echo "::error::faltou no pacote: $E"; exit 1; }
           done
-          echo "Instalador completo: 4 plugins + app + 2 modelos."
+          echo "Instalador completo: 4 plugins + app + 3 modelos (small, base, VAD)."
 
           # Nenhum bundle pode ser relocavel. Se for, o Installer do macOS
           # instala em cima de qualquer copia do mesmo bundle que exista no

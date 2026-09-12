@@ -112,6 +112,54 @@ juce::StringArray TranscriberLiveAudioProcessor::getAvailableModels() const
     return out;
 }
 
+// Do mais leve para o mais pesado. Serve tanto para escolher o padrao quanto
+// para saber para onde descer quando a maquina nao acompanha.
+static const char* const kModelosPorPeso[] = { "tiny", "base", "small", "medium", "turbo", "large" };
+
+/*  Esta maquina aguenta o modelo grande?
+
+    O criterio NAO e Intel x Apple Silicon, embora seja tentador. Um iMac 2019
+    i9 de 8 nucleos roda o small folgado e um MacBook Air i5-8210Y de 2 nucleos
+    nao roda -- os dois sao Intel. Quem decide e a capacidade:
+
+      - Apple Silicon: o Metal faz o trabalho pesado, aguenta.
+      - Intel/PC: depende de nucleos FISICOS. Com 4 ou mais, o small anda; com
+        2, nao anda (medido: mais de 170 s numa unica frase).
+
+    Isto e so o palpite inicial. Quem corrige e a medicao: se o RTF mostrar que
+    erramos, o plugin desce de modelo sozinho (ver timerCallback).            */
+static bool maquinaAguentaModeloGrande()
+{
+   #if JUCE_MAC && (defined (__aarch64__) || defined (__arm64__))
+    return true;   // Apple Silicon: Metal
+   #else
+    return juce::SystemStats::getNumPhysicalCpus() >= 4;
+   #endif
+}
+
+juce::String TranscriberLiveAudioProcessor::escolherModeloMaisLeve (const juce::String& atual) const
+{
+    const auto models = getAvailableModels();
+    if (models.isEmpty())
+        return {};
+
+    // posicao do atual na escala de peso
+    int pesoAtual = -1;
+    for (int i = 0; i < (int) juce::numElementsInArray (kModelosPorPeso); ++i)
+        if (atual.containsIgnoreCase (kModelosPorPeso[i])) { pesoAtual = i; break; }
+
+    if (pesoAtual <= 0)
+        return {};   // desconhecido, ou ja e o mais leve
+
+    // o mais pesado que ainda seja mais leve que o atual
+    for (int i = pesoAtual - 1; i >= 0; --i)
+        for (auto& m : models)
+            if (m.containsIgnoreCase (kModelosPorPeso[i]))
+                return m;
+
+    return {};
+}
+
 void TranscriberLiveAudioProcessor::autoSelectModel()
 {
     if (selectedModel.isNotEmpty() && tl::Hub::findModelFiles().count (selectedModel) > 0)
@@ -120,8 +168,11 @@ void TranscriberLiveAudioProcessor::autoSelectModel()
     const auto models = getAvailableModels();
     selectedModel.clear();
 
-    // preferência: small > base > medium > large-v3-turbo > qualquer
-    for (auto* pref : { "small", "base", "medium", "turbo", "large", "tiny" })
+    const bool forte = maquinaAguentaModeloGrande();
+    const char* const fortes[] = { "small", "base", "medium", "turbo", "large", "tiny" };
+    const char* const fracas[] = { "base", "tiny", "small", "medium", "turbo", "large" };
+
+    for (auto* pref : forte ? fortes : fracas)
     {
         for (auto& m : models)
             if (m.containsIgnoreCase (pref)) { selectedModel = m; break; }
@@ -129,6 +180,11 @@ void TranscriberLiveAudioProcessor::autoSelectModel()
     }
     if (selectedModel.isEmpty() && ! models.isEmpty())
         selectedModel = models[0];
+
+    TL_LOGI ("modelo", juce::String ("padrao para esta maquina: ")
+             + (selectedModel.isEmpty() ? juce::String ("nenhum") : selectedModel)
+             + juce::String::formatted ("  (%d nucleos fisicos, ", juce::SystemStats::getNumPhysicalCpus())
+             + (forte ? "aguenta o modelo grande)" : "modelo leve por precaucao)"));
 }
 
 void TranscriberLiveAudioProcessor::loadModels()
@@ -261,6 +317,39 @@ void TranscriberLiveAudioProcessor::send (const tl::Message& m)
 void TranscriberLiveAudioProcessor::timerCallback()
 {
     send (makeMessage ("hello"));
+
+    /*  Maquina nao acompanha: desce de modelo, uma vez.
+
+        O motor so LEVANTA a bandeira; a troca acontece aqui, no timer, que
+        roda na thread de mensagens. Trocar de dentro do worker seria mexer no
+        estado do processador durante a transcricao.
+
+        Uma vez por sessao (o proprio motor so avisa uma vez). Sem isso, uma
+        maquina no limite ficaria pulando entre modelos no meio do show, que e
+        pior do que qualquer um dos dois.
+
+        A troca vale mesmo que o cliente tenha escolhido o modelo na mao: num
+        palco, texto que chega minutos atrasado nao serve para nada, entao
+        manter a preferencia dele seria respeitar a escolha e entregar algo
+        inutil. O status e o log dizem claramente o que houve e por que.      */
+    if (engine.consumirAvisoDeLentidao())
+    {
+        const auto leve = escolherModeloMaisLeve (selectedModel);
+
+        if (leve.isNotEmpty())
+        {
+            TL_LOGW ("modelo", "trocando " + selectedModel + " -> " + leve
+                     + " (esta maquina nao acompanha o tempo real)");
+            trocaAutomatica = selectedModel + " -> " + leve;
+            selectModel (leve);
+        }
+        else
+        {
+            TL_LOGW ("modelo", "maquina lenta, mas " + selectedModel
+                     + " ja e o modelo mais leve instalado -- nada a fazer");
+            trocaAutomatica = "sem modelo mais leve disponivel";
+        }
+    }
 }
 
 void TranscriberLiveAudioProcessor::sendLine (const TranscriptionEngine::Line& line)
