@@ -126,8 +126,27 @@ for B in "$R/Library/Audio/Plug-Ins/VST3/"*.vst3 \
          "$R/Applications/"*.app; do
     [ -e "$B" ] || continue
     EXE="$(/bin/ls "$B/Contents/MacOS/" 2>/dev/null | /usr/bin/head -1)"
-    if [ -z "$EXE" ]; then verm "  ERRO: $(basename "$B") sem binario em Contents/MacOS"; ok=0
-    else echo "  ok  $(basename "$B")"; fi
+    if [ -z "$EXE" ]; then verm "  ERRO: $(basename "$B") sem binario em Contents/MacOS"; ok=0; continue; fi
+
+    # --- devolve o bit de execucao -----------------------------------------
+    #
+    # O artefato do GitHub Actions e um ZIP, e ZIP nao guarda permissao de
+    # Unix: tudo volta como -rw-r--r--. Os plugins nem notam (o host carrega
+    # como biblioteca), mas o .app fica impossivel de abrir -- o macOS so diz
+    # "O aplicativo nao pode ser aberto", sem falar em permissao.
+    #
+    # Isso passou batido porque so aparece quando o instalador e montado a
+    # partir de artefatos baixados; montando no Mac, o bit sobrevive.
+    #
+    # E nao adianta corrigir so no postinstall com "chmod -R a+rX": o X
+    # maiusculo SO liga o x onde ja existe algum -- quando o bit se perdeu
+    # por inteiro, ele nao restaura nada. Tem que ser aqui, e explicito.
+    /bin/chmod +x "$B/Contents/MacOS/"* 2>/dev/null
+
+    if [ ! -x "$B/Contents/MacOS/$EXE" ]; then
+        verm "  ERRO: $(basename "$B") — nao consegui tornar o binario executavel"; ok=0; continue
+    fi
+    echo "  ok  $(basename "$B")"
 done
 [ "$ok" = "1" ] || morre "Payload invalido — nao vou empacotar isso."
 

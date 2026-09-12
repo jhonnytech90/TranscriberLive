@@ -174,13 +174,17 @@ jobs:
           fi
           echo "Nenhum bundle relocavel: o app vai para /Applications sempre."
 
+
       - name: Testa a desinstalacao de verdade
         run: |
           set -e
           sudo installer -pkg "$GITHUB_WORKSPACE/Instalador/saida/"TranscriberLive-*-macOS.pkg -target /
           test -d "/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3"
           test -f "/Library/Application Support/TranscriberLive/models/ggml-small.bin"
-          echo "instalado ok"
+          # o app tem que abrir: binario presente E executavel
+          APPBIN="/Applications/Transcriber Live Display.app/Contents/MacOS/Transcriber Live Display"
+          test -x "$APPBIN" || { echo "::error::o app instalado nao esta executavel"; ls -l "$APPBIN"; exit 1; }
+          echo "instalado ok (app executavel)"
           sudo installer -pkg "$GITHUB_WORKSPACE/Instalador/saida/"*Desinstalador.pkg -target /
           for X in "/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3" \
                    "/Library/Audio/Plug-Ins/Components/Transcriber Live Receiver.component" \

@@ -23,6 +23,23 @@ echo "$BUNDLES" | while IFS= read -r B; do
     # sem isso o host recusa carregar plugin baixado da internet
     /usr/bin/xattr -cr "$B" 2>/dev/null
     /bin/chmod -R a+rX "$B" 2>/dev/null
+
+    # O binario precisa de +x EXPLICITO.
+    #
+    # "a+rX" com X maiusculo so liga o x onde ja existe algum -- se o bit se
+    # perdeu por inteiro (e ele se perde: artefato do GitHub e ZIP, e ZIP nao
+    # guarda permissao), ele nao restaura nada. Os plugins funcionam mesmo
+    # assim, porque o host os carrega como biblioteca; o .app nao abre, e o
+    # macOS so diz "O aplicativo nao pode ser aberto".
+    #
+    # Fica aqui tambem, e nao so no montador, para consertar quem ja instalou
+    # a versao quebrada: basta reinstalar por cima.
+    if [ -d "$B/Contents/MacOS" ]; then
+        /bin/chmod +x "$B/Contents/MacOS/"* 2>/dev/null
+        for X in "$B/Contents/MacOS/"*; do
+            [ -e "$X" ] && [ ! -x "$X" ] && echo "AVISO: sem permissao de execucao: $X"
+        done
+    fi
     echo "ok: $B"
 done
 
