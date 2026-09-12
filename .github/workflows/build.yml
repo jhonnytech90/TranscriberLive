@@ -46,6 +46,8 @@ jobs:
   installer-windows:
     needs: build
     runs-on: windows-2022
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -77,6 +79,22 @@ jobs:
         with:
           name: TranscriberLive-Windows-Setup
           path: Instalador/Windows/saida/*.exe
+
+      # Igual ao macOS: link fixo, para mandar ao cliente sem ele precisar
+      # entrar no Actions, achar o run certo e baixar um zip.
+      - name: Publica na Release "windows-latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -e
+          gh release view windows-latest >/dev/null 2>&1 || \
+            gh release create windows-latest --title "Transcriber Live - Windows (build mais recente)" \
+               --notes "Instalador do Windows, gerado automaticamente a cada build. Instala os plugins VST3, o aplicativo do Display e baixa os modelos de voz." \
+               --latest=false
+          gh release upload windows-latest Instalador/Windows/saida/*.exe --clobber
+          echo "### Download" >> "$GITHUB_STEP_SUMMARY"
+          echo "Instalador do Windows em <${{ github.server_url }}/${{ github.repository }}/releases/tag/windows-latest>" >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # Instalador do macOS (.pkg offline, modelos embutidos) + desinstalador
