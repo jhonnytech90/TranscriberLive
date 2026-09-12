@@ -150,8 +150,42 @@ echo "Gerando o instalador..."
 /bin/chmod +x scripts/postinstall 2>/dev/null
 /bin/rm -f "$SAIDA"/*.pkg
 
+# --- trava a RELOCACAO DE BUNDLE (senao o app some da pasta Aplicativos) -----
+#
+# O Installer do macOS tem um comportamento que nao esta em lugar nenhum da
+# interface: se ja existe, em QUALQUER pasta do disco, um bundle com o mesmo
+# CFBundleIdentifier registrado no Launch Services, ele instala EM CIMA
+# daquela copia em vez do caminho declarado no pacote. Silenciosamente.
+#
+# Aconteceu de verdade. Numa maquina que tinha uma copia do app em
+# /Applications/arquivos, o /var/log/install.log registrou:
+#
+#   PackageKit: Applications/Transcriber Live Display.app relocated to
+#               Applications/arquivos/Transcriber Live Display.app
+#
+# Resultado: os plugins instalaram certo, o app "sumiu" -- estava instalado,
+# mas dentro da pasta antiga. O cliente ve "parou de abrir".
+#
+# Basta uma copia perdida em Downloads para isso acontecer com qualquer um.
+# A cura e declarar cada bundle como nao-relocavel.
+PLIST="$TMP/componentes.plist"
+/usr/bin/pkgbuild --analyze --root "$R" "$PLIST" >/dev/null \
+    || morre "pkgbuild --analyze falhou."
+
+/usr/bin/python3 - "$PLIST" <<'PYEOF' || morre "nao consegui marcar os bundles como nao-relocaveis."
+import plistlib, sys
+caminho = sys.argv[1]
+with open(caminho, "rb") as f:
+    comps = plistlib.load(f)
+for c in comps:
+    c["BundleIsRelocatable"] = False
+with open(caminho, "wb") as f:
+    plistlib.dump(comps, f)
+print("  %d bundles marcados como nao-relocaveis" % len(comps))
+PYEOF
+
 /usr/bin/pkgbuild --identifier "$ID" --version "$VERSAO" \
-    --root "$R" --scripts scripts \
+    --root "$R" --scripts scripts --component-plist "$PLIST" \
     --ownership recommended --install-location / \
     "$TMP/base.pkg" >/dev/null || morre "pkgbuild (instalador) falhou."
 

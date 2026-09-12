@@ -162,6 +162,18 @@ jobs:
           done
           echo "Instalador completo: 4 plugins + app + 2 modelos."
 
+          # Nenhum bundle pode ser relocavel. Se for, o Installer do macOS
+          # instala em cima de qualquer copia do mesmo bundle que exista no
+          # disco do cliente, em vez do caminho declarado -- e o app "some".
+          # Ja aconteceu: o app foi parar em /Applications/arquivos porque
+          # havia uma copia la.
+          if grep -q "<relocate>" conf/base.pkg/PackageInfo; then
+            echo "::error::o pacote tem bundle RELOCAVEL — o app pode ser instalado na pasta errada"
+            grep -A5 "<relocate>" conf/base.pkg/PackageInfo
+            exit 1
+          fi
+          echo "Nenhum bundle relocavel: o app vai para /Applications sempre."
+
       - name: Testa a desinstalacao de verdade
         run: |
           set -e
