@@ -70,6 +70,43 @@ DADOS = _pasta_dados()
 if getattr(sys, "frozen", False):
     os.makedirs(DADOS, exist_ok=True)
 
+
+# ---------------------------------------------------------------------------
+# Chave embutida no proprio .app (opcional)
+# ---------------------------------------------------------------------------
+# O montador pode copiar a chave privada para Contents/Resources, e ai o app
+# fica autossuficiente: abre e ja assina, sem pasta de dados nenhuma.
+#
+# Isso e conveniente e e um RISCO que nao da para desfazer. Um .app e uma
+# pasta que se copia sem pensar -- AirDrop, zip num e-mail, pendrive, backup
+# que sincroniza -- e a chave viaja junto, calada. O licenciamento e offline e
+# nao tem revogacao: se a chave vazar, a unica saida e republicar o plugin com
+# chave nova, o que invalida TODA licenca ja vendida e obriga a reemitir uma
+# por uma.
+#
+# Por isso a chave embutida tem PRIORIDADE (quem pediu quer usar ela), mas o
+# app continua funcionando sem ela -- entao remover a chave de dentro do
+# pacote a qualquer momento volta ao modo seguro, sem recompilar nada.
+def _chave_embutida():
+    if not getattr(sys, "frozen", False):
+        return None
+
+    candidatos = []
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    candidatos.append(os.path.normpath(os.path.join(exe_dir, "..", "Resources")))
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidatos.append(meipass)
+
+    for base in candidatos:
+        p = os.path.join(base, core.PRIV_FILE)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+CHAVE_EMBUTIDA = _chave_embutida()
+
 PASTA_LICENCAS = os.path.join(DADOS, "licencas")
 CSV_HISTORICO  = os.path.join(DADOS, "licencas-emitidas.csv")
 
@@ -105,7 +142,8 @@ class App(tk.Tk):
         self.geometry("820x780")
         self.minsize(780, 700)
 
-        self.priv_path = tk.StringVar(value=os.path.join(DADOS, core.PRIV_FILE))
+        self.priv_path = tk.StringVar(
+            value=CHAVE_EMBUTIDA or os.path.join(DADOS, core.PRIV_FILE))
         self.priv = None
 
         self._estilo()

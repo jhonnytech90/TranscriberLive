@@ -7,20 +7,20 @@
 # Sai em:  saida-app/Gerador de Licencas.app
 #
 # ---------------------------------------------------------------------------
-# O que este script NAO faz, de proposito
+# Chave privada DENTRO do app (padrao)
 # ---------------------------------------------------------------------------
-# Nao embute a chave privada no aplicativo. Um .app e um pacote que se copia,
-# se compartilha e se manda por AirDrop sem pensar; chave de assinatura dentro
-# dele seria um acidente esperando acontecer. O app LE a chave da pasta de
-# dados em tempo de execucao:
+# A chave e copiada para Contents/Resources, entao o app abre e ja assina, sem
+# depender de pasta nenhuma. Para montar SEM a chave dentro:
 #
-#     ~/TranscriberLive-Licencas/
+#     ./montar-gerador-app.command --sem-chave
 #
-# Essa pasta fica na RAIZ da pasta pessoal e nao em Documentos, porque com o
-# iCloud Drive sincronizando Documentos (o padrao na maioria das maquinas) a
-# chave privada iria para os servidores da Apple. Como o licenciamento e
-# offline e nao tem revogacao, um vazamento dessa chave obriga a republicar o
-# plugin com chave nova -- invalidando TODA licenca ja vendida.
+# Neste caso o app le a chave de ~/TranscriberLive-Licencas/ em tempo de
+# execucao. Essa pasta fica na raiz da pasta pessoal e nao em Documentos, que
+# na maioria das maquinas esta sincronizado com o iCloud Drive.
+#
+# Regra unica, valendo para o app com chave dentro: ele nao sai desta maquina.
+# Nao mandar por AirDrop, nao zipar para e-mail, nao deixar em pasta que
+# sincroniza com nuvem. O licenciamento e offline e nao tem revogacao.
 #
 set -e
 cd "$(dirname "$0")"
@@ -29,6 +29,9 @@ verm()  { printf '\033[31m%s\033[0m\n' "$1"; }
 verde() { printf '\033[32m%s\033[0m\n' "$1"; }
 cinza() { printf '\033[90m%s\033[0m\n' "$1"; }
 morre() { verm "$1"; echo ""; read -r -p "Enter para fechar..." _; exit 1; }
+
+COM_CHAVE=1
+[ "${1:-}" = "--sem-chave" ] && COM_CHAVE=0
 
 echo ""
 echo "Gerador de Licencas -> .app"
@@ -102,19 +105,48 @@ BIN="$APP/Contents/MacOS/Gerador de Licencas"
 [ -x "$BIN" ] || chmod +x "$BIN"
 [ -x "$BIN" ] || morre "O binario do app nao esta executavel."
 
-# assinatura ad-hoc: sem isso o macOS pode recusar abrir
+# ---------------------------------------------------------------- 5. a chave
+# Copiada DEPOIS do PyInstaller, direto para Contents/Resources: assim ela nao
+# passa pelo cache nem pelo .spec dele, e nao fica esquecida em build-app/.
+if [ "$COM_CHAVE" = "1" ]; then
+    CHAVE=""
+    for c in "$HOME/TranscriberLive-Licencas/transcriberlive-private.key" \
+             "./transcriberlive-private.key" \
+             "$HOME/transcriberlive-private.key"; do
+        [ -f "$c" ] && { CHAVE="$c"; break; }
+    done
+
+    if [ -n "$CHAVE" ]; then
+        cp "$CHAVE" "$APP/Contents/Resources/transcriberlive-private.key"
+        chmod 600 "$APP/Contents/Resources/transcriberlive-private.key"
+        cinza "chave    : embutida (de $CHAVE)"
+        COM_CHAVE_OK=1
+    else
+        verm "AVISO: nao achei transcriberlive-private.key -- app montado SEM chave dentro."
+        verm "       Ele vai procurar em ~/TranscriberLive-Licencas/ ao abrir."
+        COM_CHAVE_OK=0
+    fi
+else
+    cinza "chave    : fora do app (--sem-chave)"
+    COM_CHAVE_OK=0
+fi
+
+# Assinatura ad-hoc POR ULTIMO: qualquer arquivo colocado no pacote depois de
+# assinar invalida a assinatura, e o macOS recusa abrir com erro generico.
+# Foi exatamente esse o problema no instalador do plugin, com o lipo.
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
+codesign --verify "$APP" >/dev/null 2>&1 || verm "AVISO: a assinatura nao validou."
 
 echo ""
 verde "Pronto: $(cd "$(dirname "$APP")" && pwd)/$(basename "$APP")"
 cinza "tamanho: $(du -sh "$APP" | cut -f1)"
 echo ""
-echo "Os DADOS (chave, licencas, historico) ficam em:"
+if [ "${COM_CHAVE_OK:-0}" = "1" ]; then
+    verm "A CHAVE PRIVADA ESTA DENTRO DESTE APP."
+    verm "Ele nao sai desta maquina: sem AirDrop, sem zip por e-mail, sem pasta de nuvem."
+    echo ""
+fi
+echo "As licencas emitidas e o historico ficam em:"
 echo "    ~/TranscriberLive-Licencas/"
-echo ""
-echo "Se ainda nao moveu, leve para la a chave e o historico que voce ja tem:"
-echo "    transcriberlive-private.key"
-echo "    licencas-emitidas.csv"
-echo "    licencas/"
 echo ""
 read -r -p "Enter para fechar..." _
