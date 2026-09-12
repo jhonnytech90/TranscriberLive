@@ -5,10 +5,44 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# macOS: build universal (Apple Silicon + Intel) e alvo mínimo 11.0
+# ---------------------------------------------------------------------------
+# macOS: uma passada de compilação POR ARQUITETURA (e não uma universal)
+# ---------------------------------------------------------------------------
+# Parece natural pedir "arm64;x86_64" de uma vez e deixar o compilador resolver.
+# Não funciona, e o modo como falha é traiçoeiro: o ggml escolhe o SIMD olhando
+# CMAKE_OSX_ARCHITECTURES, e o teste dele é de igualdade exata:
+#
+#     if     (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")  -> ARM
+#     elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64") -> x86
+#     else() -> "Unknown CPU architecture. Falling back to generic..."
+#               + -DGGML_CPU_GENERIC
+#
+# Com a lista "arm64;x86_64" nenhuma bate, e o ggml compila o caminho genérico
+# escalar — sem AVX2, sem FMA, sem os kernels otimizados — nas DUAS fatias.
+#
+# O estrago não aparece no Apple Silicon, porque lá o Metal faz o trabalho
+# pesado e esconde a CPU capada. No Intel aparece inteiro: medimos RTF 14 num
+# MacBook Air 2019 com o modelo `base` — 1,1 s de fala levando 16 s.
+#
+# Por isso o CI compila uma vez com TL_OSX_ARCH=arm64, outra com x86_64 — aí o
+# ggml reconhece cada uma e otimiza — e junta as fatias com `lipo`. O resultado
+# continua sendo UM binário universal e UM instalador.
 if(APPLE)
-    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
+    if(NOT DEFINED TL_OSX_ARCH)
+        set(TL_OSX_ARCH "arm64;x86_64")   # conveniência para build local
+    endif()
+    set(CMAKE_OSX_ARCHITECTURES "${TL_OSX_ARCH}" CACHE STRING "" FORCE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "" FORCE)
+
+    list(LENGTH CMAKE_OSX_ARCHITECTURES TL_NUM_ARCH)
+    if(TL_NUM_ARCH GREATER 1)
+        message(WARNING
+            "Compilando ${CMAKE_OSX_ARCHITECTURES} numa passada so. O ggml vai cair "
+            "no modo generico (sem AVX2/NEON) e ficar varias vezes mais lento, "
+            "principalmente em Mac Intel. Para um build de distribuicao, compile "
+            "uma vez com -DTL_OSX_ARCH=arm64, outra com -DTL_OSX_ARCH=x86_64 e junte "
+            "as fatias com lipo (e o que o CI faz).")
+    endif()
 endif()
 
 # fontes em UTF-8 (o MSVC precisa da flag explicita)

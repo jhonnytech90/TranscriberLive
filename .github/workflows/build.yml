@@ -25,11 +25,102 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRANSCRIBER_COPY_PLUGIN=OFF ${{ matrix.os == 'windows-2022' && '-G "Visual Studio 17 2022" -A x64' || '-G Xcode' }}
+      - name: Configure (Windows)
+        if: matrix.os == 'windows-2022'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRANSCRIBER_COPY_PLUGIN=OFF -G "Visual Studio 17 2022" -A x64
 
-      - name: Build
+      - name: Build (Windows)
+        if: matrix.os == 'windows-2022'
         run: cmake --build build --config Release --target ${{ matrix.targets }} --parallel 4
+
+      # -----------------------------------------------------------------------
+      # macOS: UMA PASSADA POR ARQUITETURA, depois lipo.
+      #
+      # Compilar "arm64;x86_64" de uma vez so faz o ggml nao reconhecer a
+      # arquitetura e cair no caminho generico escalar (-DGGML_CPU_GENERIC),
+      # sem AVX2 nem NEON, nas duas fatias. No Apple Silicon o Metal esconde
+      # isso; no Intel nao ha Metal e o resultado foi RTF 14 (1,1 s de fala
+      # levando 16 s) num MacBook Air 2019.
+      #
+      # Duas passadas custam mais tempo de build. Sao minutos de CI contra um
+      # fator de ~10x na maquina do cliente.
+      # -----------------------------------------------------------------------
+      - name: Compila arm64 e x86_64 em separado (macOS)
+        if: matrix.os == 'macos-14'
+        run: |
+          # pipefail e obrigatorio aqui: sem ele, o "| tee" mascara a falha do
+          # cmake e o build segue em frente com uma configuracao quebrada.
+          set -e -o pipefail
+          for ARCH in arm64 x86_64; do
+            echo "::group::configure $ARCH"
+            cmake -B "build-$ARCH" -G Xcode -DTRANSCRIBER_COPY_PLUGIN=OFF \
+                  -DTL_OSX_ARCH="$ARCH" 2>&1 | tee "cfg-$ARCH.log"
+            echo "::endgroup::"
+
+            # Trava: se o ggml voltar ao modo generico, o build para aqui.
+            # Sem isso o problema volta calado e so aparece na mao do cliente.
+            if grep -qi "Unknown CPU architecture" "cfg-$ARCH.log"; then
+              echo "::error::ggml caiu no modo generico em $ARCH — SIMD desligado"
+              exit 1
+            fi
+            echo "SIMD detectado em $ARCH:"
+            grep -iE "ARM detected|x86 detected|AVX2|FMA|NEON" "cfg-$ARCH.log" | sort -u || true
+
+            echo "::group::build $ARCH"
+            cmake --build "build-$ARCH" --config Release --target ${{ matrix.targets }} --parallel 4
+            echo "::endgroup::"
+          done
+
+      - name: Junta as fatias num binario universal (macOS)
+        if: matrix.os == 'macos-14'
+        run: |
+          set -e
+          rm -rf build && mkdir -p build
+          for D in TranscriberLive_artefacts TranscriberLiveDisplay_artefacts TranscriberLiveDisplayApp_artefacts; do
+            cp -R "build-arm64/$D" "build/$D"
+          done
+
+          # Para cada Mach-O da arvore arm64, junta com o par x86_64.
+          N=0
+          while IFS= read -r F; do
+            file -b "$F" | grep -q "Mach-O" || continue
+            REL="${F#build/}"
+            X="build-x86_64/$REL"
+            if [ ! -f "$X" ]; then
+              echo "::error::sem par x86_64 para $REL"; exit 1
+            fi
+            lipo -create "$F" "$X" -output "$F.univ"
+            mv "$F.univ" "$F"
+            chmod +x "$F"
+            N=$((N+1))
+            echo "  universal: $REL  ->  $(lipo -archs "$F")"
+          done < <(find build -type f)
+
+          [ "$N" -ge 5 ] || { echo "::error::esperava pelo menos 5 binarios, juntei $N"; exit 1; }
+          echo "$N binarios universais."
+
+          # ---- re-assinar: o lipo invalida a assinatura do bundle -------------
+          #
+          # O Xcode assina cada bundle (ad-hoc) ao compilar. Trocar o binario
+          # por dentro, como o lipo faz, quebra essa assinatura -- e bundle com
+          # assinatura invalida o macOS recusa carregar, com erro generico.
+          # Entao re-assinamos cada bundle depois da juncao.
+          while IFS= read -r B; do
+            codesign --force --sign - --timestamp=none "$B" 2>&1 | sed 's/^/    /'
+            codesign --verify --deep "$B" || { echo "::error::assinatura invalida: $B"; exit 1; }
+            echo "  assinado: $(basename "$B")"
+          done < <(find build -maxdepth 4 \( -name '*.vst3' -o -name '*.component' -o -name '*.app' \) -type d)
+
+          # confere que todos tem as duas arquiteturas
+          while IFS= read -r F; do
+            file -b "$F" | grep -q "Mach-O" || continue
+            A=$(lipo -archs "$F")
+            case "$A" in
+              *arm64*x86_64*|*x86_64*arm64*) ;;
+              *) echo "::error::$F ficou so com: $A"; exit 1 ;;
+            esac
+          done < <(find build -type f)
+          echo "Todos os binarios tem arm64 + x86_64."
 
       - name: Upload
         uses: actions/upload-artifact@v4
