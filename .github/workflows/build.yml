@@ -93,6 +93,17 @@ jobs:
                --notes "Instalador do Windows, gerado automaticamente a cada build. Instala os plugins VST3, o aplicativo do Display e baixa os modelos de voz." \
                --latest=false
           gh release upload windows-latest Instalador/Windows/saida/*.exe --clobber
+
+          # mesmo motivo do macOS: a pagina mostraria a data da tag, nao a do arquivo
+          gh release edit windows-latest \
+            --title "Transcriber Live - Windows ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
+            --notes "Instalador do Windows, gerado automaticamente.
+
+          **Atualizado em:** $(date -u '+%d/%m/%Y as %H:%M') UTC
+          **Commit:** \`${GITHUB_SHA:0:7}\`
+
+          Instala os plugins VST3, o aplicativo do Display e baixa os modelos de voz."
+
           echo "### Download" >> "$GITHUB_STEP_SUMMARY"
           echo "Instalador do Windows em <${{ github.server_url }}/${{ github.repository }}/releases/tag/windows-latest>" >> "$GITHUB_STEP_SUMMARY"
 
@@ -209,6 +220,21 @@ jobs:
                --notes "Instalador e desinstalador do macOS, gerados automaticamente a cada build. Os modelos de voz ja vem embutidos: o cliente nao baixa nada." \
                --latest=false
           gh release upload macos-latest Instalador/saida/*.pkg --clobber
+
+          # A release reaproveita a mesma tag, entao a PAGINA continua mostrando
+          # a data em que a tag foi criada -- e da a impressao de que o arquivo
+          # e velho, mesmo tendo acabado de ser trocado. Reescrevemos titulo e
+          # texto a cada build para a data e o commit ficarem visiveis.
+          gh release edit macos-latest \
+            --title "Transcriber Live - macOS ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
+            --notes "Instalador e desinstalador do macOS, gerados automaticamente.
+
+          **Atualizado em:** $(date -u '+%d/%m/%Y as %H:%M') UTC
+          **Commit:** \`${GITHUB_SHA:0:7}\`
+
+          Os modelos de voz ja vem embutidos: o cliente nao baixa nada.
+          O plugin escolhe entre eles conforme a capacidade da maquina."
+
           echo "### Download" >> "$GITHUB_STEP_SUMMARY"
           echo "Instalador e desinstalador em <${{ github.server_url }}/${{ github.repository }}/releases/tag/macos-latest>" >> "$GITHUB_STEP_SUMMARY"
 
