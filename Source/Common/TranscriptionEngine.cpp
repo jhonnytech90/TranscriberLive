@@ -67,6 +67,14 @@ TranscriptionEngine::~TranscriptionEngine()
 //==============================================================================
 void TranscriptionEngine::loadModel (const juce::File& modelFile)
 {
+    // Modelo novo, medicao nova: desliga o modo economico e volta a avaliar.
+    // Sem isto, uma vez rebaixado o plugin continuaria com a qualidade
+    // reduzida para sempre, mesmo tendo trocado para um modelo que a maquina
+    // aguenta folgado.
+    modoEconomico.store (false);
+    frasesLentas = 0;
+    jaAvisouLento = false;
+
     pendingModel = modelFile;
     hasPendingModel.store (true);
     notify();
@@ -403,6 +411,8 @@ void TranscriptionEngine::processWindow (const float* w)
         finalizeSegment (true);
     }
     else if (s.showPartials
+             && ! modoEconomico.load()   // parcial e uma transcricao EXTRA: numa
+                                         // maquina no limite ela atrapalha a frase final
              && samplesSinceLastPartial >= kSampleRate * s.partialIntervalMs / 1000
              && fifo.getNumReady() < kSampleRate / 2)   // só se estamos em dia com o áudio (< 0,5 s de atraso)
     {
@@ -482,26 +492,41 @@ juce::String TranscriptionEngine::transcribe (const std::vector<float>& audio, b
     p.suppress_blank    = true;
     p.suppress_nst      = true;     // suprime tokens não-fala ([Música], etc.)
     p.temperature       = 0.0f;
-    p.temperature_inc   = isFinal ? 0.2f : 0.0f;   // parcial: sem fallback (mais rápido)
+    // Temperature fallback: o whisper reprocessa a MESMA frase com temperatura
+    // crescente quando o resultado nao passa nos limiares de entropia/logprob.
+    // Isso melhora o texto em audio difícil, e custa caro: no log do Air, as
+    // frases finais saíram ~50% mais lentas que as parciais de mesma duração
+    // (RTF 6,21 contra 4,08) — e essa é a única diferença entre elas.
+    //
+    // Numa máquina que já não acompanha, reprocessar é o oposto do que se quer:
+    // ela gasta 50% mais tempo para melhorar um texto que vai chegar tarde de
+    // qualquer jeito. Então o fallback só existe fora do modo econômico.
+    p.temperature_inc   = (isFinal && ! modoEconomico.load()) ? 0.2f : 0.0f;
     p.no_speech_thold   = 0.6f;
     p.entropy_thold     = 2.4f;
     p.logprob_thold     = -1.0f;
     p.max_tokens        = 0;
 
-    // ---- audio_ctx: so processa o tamanho da frase, nao 30 s sempre --------
+    // ---- audio_ctx: SO no modo economico ------------------------------------
     //
-    // O encoder do whisper trabalha numa janela fixa de 30 s (1500 quadros).
-    // Com audio_ctx=0 ele paga o custo dos 30 s inteiros mesmo para uma frase
-    // de 3 -- e o custo da atencao cresce com o QUADRADO desse numero. Num
-    // MacBook Air de 2 nucleos isso deu mais de 170 segundos numa unica frase,
-    // com a fila entupida e nada aparecendo na tela.
+    // O encoder do whisper trabalha numa janela de 1500 quadros (30 s), e foi
+    // TREINADO assim. Encurtar essa janela deixa a conta mais leve e o
+    // reconhecimento pior -- e uma troca, nao uma otimizacao.
     //
-    // Limitando ao tamanho real (com folga, e no minimo 256 quadros para nao
-    // estragar o reconhecimento das frases curtas), a conta cai junto.
+    // Eu ja errei aqui: apliquei o corte sempre, para compensar uma lentidao
+    // que na verdade vinha do ggml compilado em modo generico. Com a causa
+    // raiz corrigida, o corte deixou de ser necessario e so custava qualidade.
+    // Agora ele e ULTIMO RECURSO: entra quando a maquina nao acompanha nem
+    // com o modelo mais leve disponivel.
+    if (modoEconomico.load())
     {
         const double duracao = juce::jmax (1.0, audio.size() / (double) kSampleRate);
-        const int    quadros = (int) std::ceil (duracao / 30.0 * 1500.0) + 64;
-        p.audio_ctx = juce::jlimit (256, 1500, quadros);
+        const int    quadros = (int) std::ceil (duracao / 30.0 * 1500.0) + 256;
+        p.audio_ctx = juce::jlimit (768, 1500, quadros);   // piso alto: 256 estragava o texto
+    }
+    else
+    {
+        p.audio_ctx = 0;   // janela inteira: melhor reconhecimento
     }
 
     // permite abortar a decodificação se o plugin for descarregado no meio
@@ -572,13 +597,24 @@ juce::String TranscriptionEngine::transcribe (const std::vector<float>& audio, b
         if (rtf > kRtfLimite) ++frasesLentas;
         else                  frasesLentas = 0;
 
-        if (frasesLentas >= kFrasesLentasSeguidas && ! jaAvisouLento)
+        // Duas velocidades de reacao, de proposito.
+        //
+        // RTF pouco acima de 1 e caso de duvida: pode ser um pico do host, e
+        // ai vale esperar tres frases antes de rebaixar. RTF acima de 3 nao e
+        // duvida nenhuma -- a maquina esta 3x atras do tempo real e nao ha
+        // cenario em que a proxima frase salve. Esperar tres frases nesse caso
+        // significa 20 segundos de texto inutil na tela antes de reagir.
+        const bool semEsperanca = rtf > 3.0f;
+        const int  necessarias  = semEsperanca ? 1 : kFrasesLentasSeguidas;
+
+        if (frasesLentas >= necessarias && ! jaAvisouLento)
         {
             jaAvisouLento = true;          // uma vez por sessao, sem ficar alternando
             maquinaLenta.store (true);
             TL_LOGW ("motor", juce::String::formatted (
-                "%d frases seguidas acima do tempo real (ultimo RTF %.2f) -- "
-                "esta maquina nao da conta deste modelo", frasesLentas, rtf));
+                "%d frase(s) acima do tempo real (ultimo RTF %.2f)%s -- esta maquina "
+                "nao da conta deste modelo", frasesLentas, rtf,
+                semEsperanca ? ", e nao e por pouco" : ""));
         }
     }
 

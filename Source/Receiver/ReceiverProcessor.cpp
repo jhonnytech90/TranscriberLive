@@ -116,26 +116,21 @@ juce::StringArray TranscriberLiveAudioProcessor::getAvailableModels() const
 // para saber para onde descer quando a maquina nao acompanha.
 static const char* const kModelosPorPeso[] = { "tiny", "base", "small", "medium", "turbo", "large" };
 
-/*  Esta maquina aguenta o modelo grande?
+/*  Por que NAO ha mais palpite por hardware aqui.
 
-    O criterio NAO e Intel x Apple Silicon, embora seja tentador. Um iMac 2019
-    i9 de 8 nucleos roda o small folgado e um MacBook Air i5-8210Y de 2 nucleos
-    nao roda -- os dois sao Intel. Quem decide e a capacidade:
+    Havia: "Apple Silicon ou 4+ nucleos fisicos leva small, o resto comeca no
+    base". Parecia razoavel e estava errado -- eu calibrei aquele corte olhando
+    medicoes feitas com o ggml compilado em modo generico (sem AVX2/NEON). Ou
+    seja, calibrei em cima de um bug: as maquinas nao eram lentas, o build era.
 
-      - Apple Silicon: o Metal faz o trabalho pesado, aguenta.
-      - Intel/PC: depende de nucleos FISICOS. Com 4 ou mais, o small anda; com
-        2, nao anda (medido: mais de 170 s numa unica frase).
+    Corrigido o build, qualquer palpite que eu fizesse agora seria chute, e um
+    chute que custa QUALIDADE -- porque o base reconhece pior que o small em
+    portugues, e comecar no base "por precaucao" entrega texto pior a quem
+    aguentava o modelo bom.
 
-    Isto e so o palpite inicial. Quem corrige e a medicao: se o RTF mostrar que
-    erramos, o plugin desce de modelo sozinho (ver timerCallback).            */
-static bool maquinaAguentaModeloGrande()
-{
-   #if JUCE_MAC && (defined (__aarch64__) || defined (__arm64__))
-    return true;   // Apple Silicon: Metal
-   #else
-    return juce::SystemStats::getNumPhysicalCpus() >= 4;
-   #endif
-}
+    Entao: comeca sempre no melhor modelo disponivel e deixa a MEDICAO decidir.
+    Se o RTF mostrar que a maquina nao acompanha, o plugin desce um degrau (e
+    avisa). Erra uma vez, no maximo, e erra para o lado da qualidade.         */
 
 juce::String TranscriberLiveAudioProcessor::escolherModeloMaisLeve (const juce::String& atual) const
 {
@@ -168,11 +163,8 @@ void TranscriberLiveAudioProcessor::autoSelectModel()
     const auto models = getAvailableModels();
     selectedModel.clear();
 
-    const bool forte = maquinaAguentaModeloGrande();
-    const char* const fortes[] = { "small", "base", "medium", "turbo", "large", "tiny" };
-    const char* const fracas[] = { "base", "tiny", "small", "medium", "turbo", "large" };
-
-    for (auto* pref : forte ? fortes : fracas)
+    // preferencia por QUALIDADE; a medicao rebaixa depois, se precisar
+    for (auto* pref : { "small", "medium", "turbo", "large", "base", "tiny" })
     {
         for (auto& m : models)
             if (m.containsIgnoreCase (pref)) { selectedModel = m; break; }
@@ -181,10 +173,11 @@ void TranscriberLiveAudioProcessor::autoSelectModel()
     if (selectedModel.isEmpty() && ! models.isEmpty())
         selectedModel = models[0];
 
-    TL_LOGI ("modelo", juce::String ("padrao para esta maquina: ")
+    TL_LOGI ("modelo", juce::String ("padrao: ")
              + (selectedModel.isEmpty() ? juce::String ("nenhum") : selectedModel)
-             + juce::String::formatted ("  (%d nucleos fisicos, ", juce::SystemStats::getNumPhysicalCpus())
-             + (forte ? "aguenta o modelo grande)" : "modelo leve por precaucao)"));
+             + juce::String::formatted ("  (%d nucleos fisicos; a medicao do RTF "
+                                        "rebaixa se nao acompanhar)",
+                                        juce::SystemStats::getNumPhysicalCpus()));
 }
 
 void TranscriberLiveAudioProcessor::loadModels()
@@ -345,9 +338,15 @@ void TranscriberLiveAudioProcessor::timerCallback()
         }
         else
         {
-            TL_LOGW ("modelo", "maquina lenta, mas " + selectedModel
-                     + " ja e o modelo mais leve instalado -- nada a fazer");
-            trocaAutomatica = "sem modelo mais leve disponivel";
+            // Fim da escada de modelos. Sobra o modo economico: encurta a
+            // janela do encoder, corta o reprocessamento e desliga as
+            // parciais. Reconhece pior -- mas texto ruim no tempo certo ainda
+            // serve num palco; texto bom sete segundos atrasado nao serve.
+            TL_LOGW ("modelo", selectedModel + " ja e o modelo mais leve instalado "
+                     "-- ligando o modo economico (mais rapido, reconhece pior)");
+            engine.ativarModoEconomico();
+            trocaAutomatica = juce::String (juce::CharPointer_UTF8 (
+                "modo econÃ´mico (esta mÃ¡quina nÃ£o acompanha nem o modelo mais leve)"));
         }
     }
 }
@@ -370,7 +369,14 @@ void TranscriberLiveAudioProcessor::pushSettingsToEngine()
     s.holdMs          = (int) holdParam->load();
     s.vadThreshold    = juce::jmap (vadSensParam->load(), 0.0f, 1.0f, 0.85f, 0.25f);
     s.showPartials    = partialsParam->load() > 0.5f;
-    s.numThreads      = juce::jlimit (2, 8, juce::SystemStats::getNumCpus() - 1);
+    // Threads = nucleos FISICOS, nao logicos.
+    //
+    // Estava usando getNumCpus()-1, que num Air de 2 nucleos com HyperThreading
+    // da 3 threads para 2 nucleos reais. Em carga de matriz densa como a do
+    // whisper, HyperThreading nao acrescenta capacidade -- as duas threads
+    // irmas disputam a mesma unidade de execucao -- e o excesso ainda compete
+    // com a thread de audio do host.
+    s.numThreads      = juce::jlimit (2, 8, juce::SystemStats::getNumPhysicalCpus());
     engine.setSettings (s);
 }
 

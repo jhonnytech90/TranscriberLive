@@ -92,6 +92,13 @@ public:
         para nao mexer no estado do processador de dentro da thread do worker. */
     bool consumirAvisoDeLentidao() noexcept { return maquinaLenta.exchange (false); }
 
+    /** ULTIMO RECURSO, quando nem o modelo mais leve acompanha: encurta a
+        janela do encoder e desliga as parciais. Fica mais rapido e reconhece
+        PIOR -- e uma troca consciente, nao uma otimizacao. Desliga sozinho
+        quando o modelo troca. */
+    void ativarModoEconomico() noexcept     { modoEconomico.store (true); }
+    bool isModoEconomico() const noexcept   { return modoEconomico.load(); }
+
     /** Cópia das linhas atuais (a UI chama com timer). */
     std::vector<Line> getLines() const;
     int  getLinesVersion() const noexcept { return linesVersion.load(); }
@@ -155,6 +162,7 @@ private:
     int                frasesLentas = 0;
     bool               jaAvisouLento = false;
     std::atomic<bool>  maquinaLenta { false };
+    std::atomic<bool>  modoEconomico { false };
 
     // Config
     mutable juce::CriticalSection settingsLock;
