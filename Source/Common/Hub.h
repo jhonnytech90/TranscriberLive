@@ -5,6 +5,7 @@
 #include "MessageStore.h"
 #include "MessageBus.h"
 #include "HttpServer.h"
+#include "Log.h"
 #include <map>
 
 namespace tl
@@ -36,10 +37,15 @@ namespace tl
             tryStart();
             startTimer (3000);
             startThread();
+
+            TL_LOGI ("hub", juce::String::formatted (
+                "iniciado: porta bus=%d web=%d  |  papel=%s", busPort, httpPort,
+                isPrimary() ? "PRIMARIO (servidores nossos)" : "secundario (espelhando outro processo)"));
         }
 
         ~Hub() override
         {
+            TL_LOGI ("hub", "encerrando");
             stopTimer();
             stopThread (3000);
             web.stop();
@@ -136,6 +142,8 @@ namespace tl
 
         void tryStart()
         {
+            const bool eraPrimario = web.isRunning();
+
             // A porta TCP (web) é exclusiva e decide quem é o "primário". UDP com
             // SO_REUSEADDR deixaria dois processos bindarem a mesma porta e os
             // pacotes iriam só para um deles — por isso o UDP só sobe junto com o web.
@@ -143,12 +151,26 @@ namespace tl
 
             if (web.isRunning())
             {
-                if (! listener.isBound()) listener.start (busPort);
+                if (! listener.isBound())
+                {
+                    listener.start (busPort);
+                    if (! listener.isBound())
+                        TL_LOGE ("hub", juce::String::formatted (
+                            "nao consegui abrir a porta UDP %d -- os Receivers nao vao chegar aqui "
+                            "(firewall ou porta ocupada)", busPort));
+                }
             }
             else if (listener.isBound())
             {
                 listener.stop();
             }
+
+            // Trocar de papel no meio da sessão explica sozinho vários "sumiu o
+            // texto": quem era primário deixou de ser, e as mensagens passaram a
+            // ir para outro processo.
+            if (eraPrimario != web.isRunning())
+                TL_LOGW ("hub", juce::String ("mudou de papel: agora ")
+                         + (web.isRunning() ? "PRIMARIO" : "secundario"));
         }
 
         void timerCallback() override { tryStart(); }

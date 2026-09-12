@@ -127,5 +127,7 @@ private:
     Identity identity;
     tl::BusSender localBus, remoteBus;
 
+    int vitalsId = 0;   // registro na linha VITAIS do log
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TranscriberLiveAudioProcessor)
 };

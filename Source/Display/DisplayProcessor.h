@@ -13,7 +13,7 @@ class DisplayAudioProcessor : public juce::AudioProcessor
 {
 public:
     DisplayAudioProcessor();
-    ~DisplayAudioProcessor() override = default;
+    ~DisplayAudioProcessor() override;
 
     void prepareToPlay (double, int) override {}
     void releaseResources() override {}

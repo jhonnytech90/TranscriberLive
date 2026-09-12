@@ -41,6 +41,7 @@ private:
     void applyIdentityFromUi();
     void loadIdentityToUi();
     void showNetwork();
+    void showLog();
     void refreshLicenseUi();
     void setControlsVisible (bool);
 
@@ -52,7 +53,8 @@ private:
     juce::Label        nameLabel, importanceLabel, modelLabel, gateLabel, vadLabel, holdLabel;
     juce::TextEditor   nameEditor;
     juce::TextButton   colourButton { "Cor" }, networkButton { "Rede..." },
-                       licenseButton { juce::String (juce::CharPointer_UTF8 ("Licen\xc3\xa7" "a")) };
+                       licenseButton { juce::String (juce::CharPointer_UTF8 ("Licen\xc3\xa7" "a")) },
+                       logButton { "Log" };
     juce::ComboBox     importanceBox, modelBox;
     juce::ToggleButton flashButton { "Flash" }, partialsButton { "Parciais" };
     LevelMeter         meter;

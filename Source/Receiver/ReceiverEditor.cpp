@@ -1,5 +1,6 @@
 #include "ReceiverEditor.h"
 #include "Common/Trace.h"
+#include "Common/Log.h"
 
 namespace
 {
@@ -100,6 +101,10 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
 
     networkButton.onClick = [this] { showNetwork(); };
     addAndMakeVisible (networkButton);
+
+    logButton.onClick = [this] { showLog(); };
+    logButton.setTooltip ("Abre a pasta de logs e copia o diagnostico para colar no suporte");
+    addAndMakeVisible (logButton);
 
     licenseButton.onClick = [this]
     {
@@ -206,6 +211,8 @@ void TranscriberLiveAudioProcessorEditor::resized()
 
     // linha 1: identidade
     auto row1 = r.removeFromTop (30);
+    logButton.setBounds (row1.removeFromRight (44).reduced (0, 2));
+    row1.removeFromRight (6);
     networkButton.setBounds (row1.removeFromRight (66).reduced (0, 2));
     row1.removeFromRight (6);
     licenseButton.setBounds (row1.removeFromRight (74).reduced (0, 2));
@@ -366,6 +373,39 @@ void TranscriberLiveAudioProcessorEditor::applyIdentityFromUi()
     id.flash = flashButton.getToggleState();
     processor.setIdentity (id);
     loadIdentityToUi();
+}
+
+//==============================================================================
+/*  Botao "Log".
+
+    O log so vale alguma coisa se o cliente conseguir mandar para nos. Pedir
+    "abra a pasta Application Support, entre em logs, ache o arquivo mais novo"
+    por telefone, no meio da passagem de som, nao funciona. Entao um clique faz
+    as duas coisas: copia o diagnostico para a area de transferencia (basta ele
+    colar no WhatsApp) e abre a pasta, para quem preferir mandar o arquivo.  */
+void TranscriberLiveAudioProcessorEditor::showLog()
+{
+    auto& log = tl::Log::get();
+
+    if (! log.isEnabled())
+    {
+        juce::NativeMessageBox::showMessageBoxAsync (
+            juce::MessageBoxIconType::WarningIcon, "Log",
+            utf8 ("O log est\xc3\xa1 desligado (existe um arquivo \"sem-log\" na pasta de dados, "
+                  "ou a pasta n\xc3\xa3o tem permiss\xc3\xa3o de escrita)."), this);
+        return;
+    }
+
+    juce::SystemClipboard::copyTextToClipboard (log.diagnostico());
+    log.getFolder().revealToUser();
+
+    TL_LOGI ("ui", "diagnostico copiado pelo usuario");
+
+    juce::NativeMessageBox::showMessageBoxAsync (
+        juce::MessageBoxIconType::InfoIcon, "Log",
+        utf8 ("Diagn\xc3\xb3stico copiado — \xc3\xa9 s\xc3\xb3 colar no WhatsApp ou no e-mail do suporte.\n\n"
+              "A pasta com os arquivos completos foi aberta:\n")
+            + log.getFolder().getFullPathName(), this);
 }
 
 void TranscriberLiveAudioProcessorEditor::showNetwork()

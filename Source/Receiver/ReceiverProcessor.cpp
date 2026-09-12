@@ -1,6 +1,7 @@
 #include "ReceiverProcessor.h"
 #include "ReceiverEditor.h"
 #include "Common/Trace.h"
+#include "Common/Log.h"
 
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout TranscriberLiveAudioProcessor::createParameterLayout()
@@ -35,14 +36,11 @@ TranscriberLiveAudioProcessor::TranscriberLiveAudioProcessor()
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "STATE", createParameterLayout())
 {
-    TL_TRACE ("=== Receiver: criando instancia ===");
-    TL_TRACE (juce::String ("host: ") + juce::PluginHostType().getHostDescription()
-              + "  |  SO: " + juce::SystemStats::getOperatingSystemName()
-              + "  |  CPU: " + juce::SystemStats::getCpuModel()
-              + juce::String (" | SSE4.2=") + (juce::SystemStats::hasSSE42() ? "1" : "0")
-              + juce::String (" AVX=")      + (juce::SystemStats::hasAVX()   ? "1" : "0")
-              + juce::String (" AVX2=")     + (juce::SystemStats::hasAVX2()  ? "1" : "0")
-              + juce::String (" FMA=")      + (juce::SystemStats::hasFMA3()  ? "1" : "0"));
+    // O cabeçalho do log já traz SO, CPU e SIMD. Aqui entra o que só o plugin
+    // sabe: quem é o host e em que formato fomos carregados.
+    TL_LOGI ("receiver", juce::String ("=== nova instancia === host: ")
+             + juce::PluginHostType().getHostDescription()
+             + "  |  formato: " + juce::AudioProcessor::getWrapperTypeDescription (wrapperType));
 
     gateParam     = apvts.getRawParameterValue (kParamGate);
     holdParam     = apvts.getRawParameterValue (kParamHold);
@@ -67,20 +65,33 @@ TranscriberLiveAudioProcessor::TranscriberLiveAudioProcessor()
     }
     catch (const std::exception& e)
     {
-        TL_TRACE (juce::String ("EXCECAO no construtor: ") + e.what());
+        TL_LOGE ("receiver", juce::String ("EXCECAO no construtor: ") + e.what());
         initError = e.what();
     }
     catch (...)
     {
-        TL_TRACE ("EXCECAO desconhecida no construtor");
+        TL_LOGE ("receiver", "EXCECAO desconhecida no construtor");
         initError = "erro desconhecido na inicializacao";
     }
 
-    TL_TRACE ("=== Receiver: instancia criada ===");
+    // Vitais do lado do áudio: nível de entrada e taxa do host. Junto com os
+    // vitais do motor, uma linha por segundo conta a sessão inteira.
+    vitalsId = tl::Log::get().addVitals ([this] (juce::String& linha)
+    {
+        linha << juce::String::formatted ("  entrada=%.0fdB %.0fHz licenca=%d modelo=",
+                                          inputLevelDb.load(), hostSampleRate,
+                                          licensed.load() ? 1 : 0)
+              << (selectedModel.isNotEmpty() ? selectedModel : juce::String ("nenhum"));
+    });
+
+    TL_LOGI ("receiver", "instancia criada"
+             + juce::String (initError.isEmpty() ? "" : " COM ERRO: " + initError));
 }
 
 TranscriberLiveAudioProcessor::~TranscriberLiveAudioProcessor()
 {
+    tl::Log::get().removeVitals (vitalsId);
+    TL_LOGI ("receiver", "instancia removida");
     stopTimer();
     engine.onLine = nullptr;
 }
@@ -141,6 +152,19 @@ void TranscriberLiveAudioProcessor::loadModels()
 
     if (vadFile.existsAsFile())
         engine.loadVadModel (vadFile);
+
+    // Metade dos chamados de suporte é "não transcreve" por falta de modelo na
+    // pasta. Esta linha responde isso de imediato.
+    if (! modelFile.existsAsFile())
+    {
+        juce::StringArray onde;
+        for (auto& d : tl::Hub::getModelSearchDirs())
+            onde.add (d.getFullPathName() + (d.isDirectory() ? "" : " (nao existe)"));
+
+        TL_LOGE ("modelo", "nenhum modelo encontrado. Procurei em: " + onde.joinIntoString ("  |  "));
+    }
+    if (! vadFile.existsAsFile())
+        TL_LOGW ("vad", "nenhum ggml-silero*.bin encontrado -- o corte de frase vai usar so o gate de nivel");
 }
 
 void TranscriberLiveAudioProcessor::selectModel (const juce::String& fileName)
@@ -161,18 +185,32 @@ void TranscriberLiveAudioProcessor::refreshLicense()
     licensed.store (info.valid);
 
     if (info.valid)
+    {
+        TL_LOGI ("licenca", "valida -- " + info.name + " (" + info.machineId + ")"
+                 + (info.expires.isEmpty() ? juce::String (", perpetua")
+                                           : ", vence em " + info.expires));
         loadModels();
+    }
     else
+    {
+        TL_LOGW ("licenca", "sem licenca ativa: " + info.error
+                 + "  |  arquivo: " + tl::License::getLicenseFile().getFullPathName());
         engine.unloadModels();
+    }
 }
 
 tl::LicenseInfo TranscriberLiveAudioProcessor::activateLicense (const juce::String& licenseText)
 {
+    TL_LOGI ("licenca", "tentando ativar (" + juce::String (licenseText.length()) + " caracteres colados)");
     const auto info = tl::License::install (licenseText);
     if (info.valid)
+    {
+        TL_LOGI ("licenca", "ativada com sucesso");
         refreshLicense();
+    }
     else
     {
+        TL_LOGE ("licenca", "ativacao recusada: " + info.error);
         const juce::ScopedLock sl (licenseLock);
         licenseInfo = info;
     }
@@ -250,6 +288,11 @@ void TranscriberLiveAudioProcessor::pushSettingsToEngine()
 //==============================================================================
 void TranscriberLiveAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    TL_LOGI ("audio", juce::String::formatted (
+        "prepareToPlay: %.0f Hz, blocos de %d amostras (%.1f ms), entradas=%d saidas=%d",
+        sampleRate, samplesPerBlock, samplesPerBlock * 1000.0 / juce::jmax (1.0, sampleRate),
+        getTotalNumInputChannels(), getTotalNumOutputChannels()));
+
     hostSampleRate = sampleRate;
     resampleRatio  = sampleRate / (double) TranscriptionEngine::kSampleRate;
     resamplePhase  = 0.0;
@@ -299,7 +342,13 @@ void TranscriberLiveAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     pushSettingsToEngine();
 
     if ((int) monoBuffer.size() < numSamples)
-        return;   // bloco maior que o anunciado (host mal-comportado): não aloca na thread de áudio
+    {
+        // bloco maior que o anunciado (host mal-comportado): não aloca na
+        // thread de áudio. Antes isso era silencioso — e um host assim fazia a
+        // transcrição sumir sem explicação nenhuma.
+        TL_LOGRT (rtBlocoGrande, numSamples, (int) monoBuffer.size());
+        return;
+    }
 
     // ---- entrada -> mono (o host já entrega o canal certo; se vier estéreo, soma) ----
     juce::FloatVectorOperations::copy (monoBuffer.data(), buffer.getReadPointer (0), numSamples);

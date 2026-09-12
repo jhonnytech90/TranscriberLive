@@ -126,6 +126,14 @@ private:
     juce::String       lastFinalText;
     juce::String       currentUtteranceId;
 
+    // Medidas publicadas na linha VITAIS do log (1x por segundo). Ficam aqui,
+    // e não num contador local, porque quem lê é a thread do log.
+    std::atomic<float> ultimoRtf { 0.0f };       // tempo gasto / duração do áudio
+    std::atomic<int>   ultimoTempoMs { 0 };
+    std::atomic<int>   totalSegmentos { 0 };
+    std::atomic<int>   totalDescartados { 0 };
+    int                vitalsId = 0;
+
     // Config
     mutable juce::CriticalSection settingsLock;
     Settings settings;

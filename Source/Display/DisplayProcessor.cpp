@@ -1,5 +1,6 @@
 #include "DisplayProcessor.h"
 #include "DisplayEditor.h"
+#include "Common/Log.h"
 
 //==============================================================================
 DisplayAudioProcessor::DisplayAudioProcessor()
@@ -7,6 +8,14 @@ DisplayAudioProcessor::DisplayAudioProcessor()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
+    TL_LOGI ("display", juce::String ("=== nova instancia === host: ")
+             + juce::PluginHostType().getHostDescription()
+             + "  |  formato: " + juce::AudioProcessor::getWrapperTypeDescription (wrapperType));
+}
+
+DisplayAudioProcessor::~DisplayAudioProcessor()
+{
+    TL_LOGI ("display", "instancia removida");
 }
 
 juce::AudioProcessorEditor* DisplayAudioProcessor::createEditor()

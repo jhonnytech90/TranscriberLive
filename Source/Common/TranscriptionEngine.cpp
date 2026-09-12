@@ -1,4 +1,5 @@
 #include "TranscriptionEngine.h"
+#include "Log.h"
 #include "whisper.h"
 #include <cmath>
 #include <cstdio>
@@ -12,14 +13,50 @@ TranscriptionEngine::TranscriptionEngine()
     preRoll.resize ((size_t) (kSampleRate * settings.preRollMs / 1000), 0.0f);
     segment.reserve ((size_t) (kSampleRate * 15));
 
-    // Silencia o log do whisper/ggml (não polui o console do host)
-    whisper_log_set ([] (ggml_log_level, const char*, void*) {}, nullptr);
+    // O whisper/ggml não escreve mais no console do host — vai para o nosso log,
+    // como detalhe. É lá que aparece qual backend ele escolheu (Metal, BLAS,
+    // CPU) e com quantas threads, que é metade do diagnóstico de lentidão.
+    whisper_log_set ([] (ggml_log_level nivel, const char* texto, void*)
+    {
+        if (texto == nullptr) return;
+        auto t = juce::String::fromUTF8 (texto).trimEnd();
+        if (t.isEmpty()) return;
+
+        if (nivel == GGML_LOG_LEVEL_ERROR)       TL_LOGE ("whisper", t);
+        else if (nivel == GGML_LOG_LEVEL_WARN)   TL_LOGW ("whisper", t);
+        else                                     TL_LOGD ("whisper", t);
+    }, nullptr);
+
+    // Vitais: uma linha por segundo com o estado real do motor. É daqui que sai
+    // a resposta para "por que está atrasando" — o RTF diz, em número, se a CPU
+    // dá conta do modelo escolhido (RTF > 1 = não dá, o atraso só cresce).
+    vitalsId = tl::Log::get().addVitals ([this] (juce::String& linha)
+    {
+        const auto atrasoSeg = fifo.getNumReady() / (double) kSampleRate;
+        linha << juce::String::formatted (
+            "fila=%.2fs rtf=%.2f ultima_transcricao=%dms falas=%d descartadas=%d "
+            "transcrevendo=%d fala_ativa=%d vad=%.2f",
+            atrasoSeg,
+            ultimoRtf.load(),
+            ultimoTempoMs.load(),
+            totalSegmentos.load(),
+            totalDescartados.load(),
+            transcribing.load() ? 1 : 0,
+            speechActive.load() ? 1 : 0,
+            lastVadProb.load());
+
+        if (atrasoSeg > 3.0)
+            linha << "  << ATRASADO";
+    });
 
     startThread (juce::Thread::Priority::normal);
 }
 
 TranscriptionEngine::~TranscriptionEngine()
 {
+    tl::Log::get().removeVitals (vitalsId);
+    TL_LOGI ("motor", "encerrando o motor");
+
     // whisper_full pode demorar; o abort_callback faz ele sair rápido quando a thread é encerrada
     stopThread (15000);
 
@@ -76,7 +113,13 @@ void TranscriptionEngine::pushAudio (const float* samples, int numSamples) noexc
     if (size2 > 0) juce::FloatVectorOperations::copy (fifoBuffer.data() + start2, samples + size1, size2);
 
     fifo.finishedWrite (size1 + size2);
-    // (se o FIFO encher — worker travado — as amostras extras são descartadas; nunca bloqueia)
+
+    // Se o FIFO encheu, o worker não está acompanhando o tempo real e estas
+    // amostras se perdem. Registrar isso é o que transforma "está estranho" em
+    // um número: aqui é EXATAMENTE onde a transcrição começa a atrasar.
+    // TL_LOGRT não aloca, não bloqueia e não toca no disco — pode ficar aqui.
+    if (const int perdidas = numSamples - (size1 + size2); perdidas > 0)
+        TL_LOGRT (rtFifoCheio, perdidas, 0);
 }
 
 //==============================================================================
@@ -94,6 +137,7 @@ void TranscriptionEngine::handleModelRequests()
 {
     if (hasPendingUnload.exchange (false))
     {
+        TL_LOGI ("modelo", "descarregando (sem licenca ou a pedido)");
         if (ctx  != nullptr) { whisper_free (ctx); ctx = nullptr; }
         if (vctx != nullptr) { whisper_vad_free (vctx); vctx = nullptr; }
         modelLoaded.store (false);
@@ -105,6 +149,10 @@ void TranscriptionEngine::handleModelRequests()
     if (hasPendingModel.exchange (false))
     {
         const auto file = pendingModel;
+
+        TL_LOGI ("modelo", "carregando " + file.getFileName()
+                 + juce::String::formatted (" (%.0f MB) de ", file.getSize() / 1048576.0)
+                 + file.getParentDirectory().getFullPathName());
 
         { const juce::ScopedLock sl (statusLock); status = "Carregando modelo..."; }
         modelLoaded.store (false);
@@ -122,6 +170,8 @@ void TranscriptionEngine::handleModelRequests()
        #if defined (TL_REQUIRES_AVX2) && ! defined (__aarch64__) && ! defined (__arm64__)
         if (! juce::SystemStats::hasAVX2() || ! juce::SystemStats::hasFMA3())
         {
+            TL_LOGE ("modelo", "CPU sem AVX2/FMA (" + juce::SystemStats::getCpuModel()
+                     + ") -- modelo NAO carregado de proposito, para nao derrubar o host");
             const juce::ScopedLock sl (statusLock);
             status = juce::String (juce::CharPointer_UTF8 (
                 "Esta CPU n\xc3\xa3o tem AVX2/FMA \xe2\x80\x94 necess\xc3\xa1rio nesta vers\xc3\xa3o. "
@@ -149,17 +199,27 @@ void TranscriptionEngine::handleModelRequests()
         cparams.flash_attn = false;
        #endif
 
+        TL_LOGI ("modelo", juce::String ("backend: GPU=") + (cparams.use_gpu ? "sim" : "nao")
+                 + "  flash_attn=" + (cparams.flash_attn ? "sim" : "nao"));
+
+        const auto tIni = juce::Time::getMillisecondCounterHiRes();
         ctx = whisper_init_from_file_with_params (file.getFullPathName().toRawUTF8(), cparams);
+        const auto levou = juce::Time::getMillisecondCounterHiRes() - tIni;
 
         const juce::ScopedLock sl (statusLock);
         if (ctx != nullptr)
         {
             modelLoaded.store (true);
             status = "Modelo: " + file.getFileName();
+            TL_LOGI ("modelo", juce::String::formatted ("carregado em %.0f ms: ", levou)
+                     + file.getFileName());
         }
         else
         {
             status = "Falha ao carregar " + file.getFileName();
+            TL_LOGE ("modelo", "FALHOU ao carregar " + file.getFullPathName()
+                     + (file.existsAsFile() ? " (arquivo existe -- modelo corrompido ou sem memoria?)"
+                                            : " (o arquivo nao existe)"));
         }
     }
 
@@ -167,6 +227,7 @@ void TranscriptionEngine::handleModelRequests()
     {
         const auto file = pendingVad;
         vadLoaded.store (false);
+        TL_LOGI ("vad", "carregando " + file.getFileName());
 
         if (vctx != nullptr) { whisper_vad_free (vctx); vctx = nullptr; }
 
@@ -179,7 +240,15 @@ void TranscriptionEngine::handleModelRequests()
 
         const juce::ScopedLock sl (statusLock);
         if (vctx == nullptr)
+        {
             status = "Falha ao carregar VAD " + file.getFileName();
+            TL_LOGW ("vad", "FALHOU: " + file.getFullPathName()
+                     + " -- sem VAD o corte de frase usa so o gate de nivel");
+        }
+        else
+        {
+            TL_LOGI ("vad", "carregado");
+        }
     }
 }
 
@@ -313,10 +382,23 @@ void TranscriptionEngine::finalizeSegment (bool isFinal)
     // (a razão ignora a cauda de silêncio do hold: conta só até a última janela com voz)
     const float speechRatio = windowsAtLastSpeech > 0 ? (float) speechWindows / (float) windowsAtLastSpeech : 0.0f;
     const bool  plausible   = speechRatio >= 0.5f;
-#if TRANSCRIBER_DEBUG
     const float meanProb    = totalWindows > 0 ? vadProbSum / (float) totalWindows : 0.0f;
-    std::fprintf (stderr, "[seg %s len=%.2fs ratio=%.2f meanProb=%.2f]\n", isFinal ? "final" : "parcial", segment.size() / 16000.0, speechRatio, meanProb);
-#endif
+
+    TL_LOGD ("segmento", juce::String::formatted (
+        "%s %.2fs razao_fala=%.2f vad_medio=%.2f", isFinal ? "final" : "parcial",
+        segment.size() / (double) kSampleRate, speechRatio, meanProb));
+
+    // Por que uma frase não virou texto: sem isto, "ele não transcreveu o que
+    // eu falei" fica sem resposta possível.
+    if (isFinal && ! (plausible && (int) segment.size() >= minSamples && ctx != nullptr))
+    {
+        totalDescartados.fetch_add (1);
+        TL_LOGI ("segmento", juce::String::formatted ("descartado (%.2fs): ",
+                                                      segment.size() / (double) kSampleRate)
+                 + (ctx == nullptr                       ? juce::String ("nenhum modelo carregado")
+                  : ! plausible                          ? juce::String::formatted ("so %.0f%% do trecho tem voz (ruido/vazamento)", speechRatio * 100.0f)
+                                                         : juce::String ("fala curta demais")));
+    }
 
     if (plausible && (int) segment.size() >= minSamples && ctx != nullptr)
     {
@@ -383,27 +465,59 @@ juce::String TranscriptionEngine::transcribe (const std::vector<float>& audio, b
 
     juce::String result;
 
-    if (whisper_full (ctx, p, padded.data(), (int) padded.size()) == 0)
+    const auto tIni = juce::Time::getMillisecondCounterHiRes();
+    const int  rc   = whisper_full (ctx, p, padded.data(), (int) padded.size());
+    const auto levouMs = juce::Time::getMillisecondCounterHiRes() - tIni;
+
+    if (rc == 0)
     {
         const int n = whisper_full_n_segments (ctx);
         for (int i = 0; i < n; ++i)
         {
-#if TRANSCRIBER_DEBUG
-            std::fprintf (stderr, "[whisper no_speech=%.2f '%s']\n", whisper_full_get_segment_no_speech_prob (ctx, i), whisper_full_get_segment_text (ctx, i));
-#endif
-            if (whisper_full_get_segment_no_speech_prob (ctx, i) > 0.5f)
+            const float noSpeech = whisper_full_get_segment_no_speech_prob (ctx, i);
+            TL_LOGD ("whisper", juce::String::formatted ("segmento no_speech=%.2f: ", noSpeech)
+                     + juce::String::fromUTF8 (whisper_full_get_segment_text (ctx, i)).trim());
+
+            if (noSpeech > 0.5f)
                 continue;
 
             result += juce::String::fromUTF8 (whisper_full_get_segment_text (ctx, i));
         }
     }
+    else
+    {
+        TL_LOGW ("whisper", juce::String::formatted ("whisper_full devolveu %d (abortado ou erro)", rc));
+    }
 
     transcribing.store (false);
+
+    // ---- RTF: a medida que decide se a maquina aguenta -----------------------
+    // RTF = tempo gasto / duracao do audio. Abaixo de 1 sobra folga; acima de 1
+    // cada frase custa mais que o proprio tempo dela e o atraso so acumula.
+    const double duracaoSeg = padded.size() / (double) kSampleRate;
+    const double rtf = levouMs / 1000.0 / juce::jmax (0.001, duracaoSeg);
+
+    ultimoTempoMs.store ((int) levouMs);
+    ultimoRtf.store ((float) rtf);
+    if (isFinal)
+        totalSegmentos.fetch_add (1);
+
+    const auto resumo = juce::String::formatted (
+        "%s %.1fs de audio em %.0f ms (RTF %.2f, %d threads)",
+        isFinal ? "final:" : "parcial:", duracaoSeg, levouMs, rtf, p.n_threads);
+
+    if (rtf > 1.0 && isFinal)
+        TL_LOGW ("whisper", resumo + " -- MAIS LENTO QUE O TEMPO REAL: o atraso vai crescer");
+    else
+        TL_LOGI ("whisper", resumo);
 
     result = result.trim();
 
     if (looksLikeHallucination (result))
+    {
+        TL_LOGD ("whisper", "descartado como alucinacao: " + result);
         return {};
+    }
 
     return result;
 }
