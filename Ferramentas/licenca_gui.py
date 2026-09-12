@@ -43,8 +43,35 @@ AZUL    = "#4fc3f7"
 ALERTA  = "#ffb84d"
 ERRO    = "#ff5252"
 
-PASTA_LICENCAS = os.path.join(AQUI, "licencas")
-CSV_HISTORICO  = os.path.join(AQUI, "licencas-emitidas.csv")
+# ---------------------------------------------------------------------------
+# Onde ficam os DADOS (chave, licenças emitidas, histórico)
+# ---------------------------------------------------------------------------
+# Separado de AQUI (onde fica o CÓDIGO) de propósito. Empacotado como .app, o
+# código vive dentro do pacote — que é somente-leitura e é substituído a cada
+# rebuild. Guardar a chave privada e o histórico de vendas ali significaria
+# não encontrar a chave e perder o registro das licenças na primeira
+# recompilação.
+#
+# A pasta escolhida é na RAIZ da pasta pessoal, e não em Documentos: quando o
+# iCloud Drive está sincronizando Documentos (o caso mais comum), colocar a
+# chave privada de assinatura lá a envia para os servidores da Apple. Como não
+# existe revogação de licença, um vazamento dessa chave obriga a republicar o
+# plugin com chave nova e invalida tudo que já foi vendido.
+def _pasta_dados():
+    env = os.environ.get("TL_LICENCAS_DIR")
+    if env:
+        return os.path.expanduser(env)
+    if getattr(sys, "frozen", False):        # rodando como .app
+        return os.path.expanduser("~/TranscriberLive-Licencas")
+    return AQUI                              # rodando como script: como sempre foi
+
+
+DADOS = _pasta_dados()
+if getattr(sys, "frozen", False):
+    os.makedirs(DADOS, exist_ok=True)
+
+PASTA_LICENCAS = os.path.join(DADOS, "licencas")
+CSV_HISTORICO  = os.path.join(DADOS, "licencas-emitidas.csv")
 
 
 def normaliza_id(txt):
@@ -78,7 +105,7 @@ class App(tk.Tk):
         self.geometry("820x780")
         self.minsize(780, 700)
 
-        self.priv_path = tk.StringVar(value=os.path.join(AQUI, core.PRIV_FILE))
+        self.priv_path = tk.StringVar(value=os.path.join(DADOS, core.PRIV_FILE))
         self.priv = None
 
         self._estilo()
@@ -302,7 +329,7 @@ class App(tk.Tk):
             % core.PRIV_FILE, icon="warning")
         if r == "yes":
             p = filedialog.askopenfilename(title="Escolha a chave privada",
-                                           initialdir=AQUI,
+                                           initialdir=DADOS,
                                            filetypes=[("Chave", "*.key"), ("Todos", "*.*")])
             if p:
                 self.priv_path.set(p)
@@ -315,10 +342,10 @@ class App(tk.Tk):
                 self.lbl_chave.configure(text="gerando par de chaves...", fg=DIM)
                 self.update_idletasks()
                 priv = core.gerar_par()
-                core.salvar_priv(priv, os.path.join(AQUI, core.PRIV_FILE))
-                with open(os.path.join(AQUI, core.PUB_FILE), "w") as fh:
+                core.salvar_priv(priv, os.path.join(DADOS, core.PRIV_FILE))
+                with open(os.path.join(DADOS, core.PUB_FILE), "w") as fh:
                     fh.write(core.linha_publica(priv) + "\n")
-                self.priv_path.set(os.path.join(AQUI, core.PRIV_FILE))
+                self.priv_path.set(os.path.join(DADOS, core.PRIV_FILE))
                 self._carrega_chave()
                 messagebox.showinfo("Pronto",
                                     "Par criado.\n\nA chave PÚBLICA foi salva em %s e precisa ser "
