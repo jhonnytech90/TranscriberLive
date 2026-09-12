@@ -76,7 +76,34 @@ endif()
 if(APPLE)
     set(GGML_METAL ON  CACHE BOOL "" FORCE)           # GPU Apple Silicon
     set(GGML_METAL_EMBED_LIBRARY ON CACHE BOOL "" FORCE)
-    set(GGML_ACCELERATE ON CACHE BOOL "" FORCE)
+
+    # ------------------------------------------------------------------------
+    # Accelerate/BLAS DESLIGADO — de propósito, e com prova.
+    # ------------------------------------------------------------------------
+    # Isto estava ON e era a causa real dos fechamentos em Mac Intel. Três
+    # relatórios do próprio macOS 12.7.4 (MacBook Air 2018), duas pilhas
+    # diferentes, o mesmo culpado:
+    #
+    #   REAPER   SIGABRT em ggml_abort <- ggml_backend_sched_backend_id_from_cur
+    #                                  <- whisper_init_state     (ao carregar o modelo)
+    #   SuperRack SIGSEGV (salto para o endereço 0)
+    #                                  <- ggml_backend_blas_graph_compute
+    #                                  <- whisper_encode_internal (ao transcrever)
+    #
+    # O backend BLAS do ggml chama o Accelerate da Apple. Compilamos com um SDK
+    # novo, onde esses símbolos mudaram (o "$NEWLAPACK" da Apple); no macOS 12 o
+    # símbolo não existe e o stub preguiçoso fica nulo — daí o salto para 0. No
+    # caminho do init, o agendador não acha backend para uma operação e chama
+    # ggml_abort, que mata o processo do host inteiro.
+    #
+    # Não dava para descobrir isso por dedução: as duas hipóteses anteriores
+    # (AVX2 e Metal) eram razoáveis e estavam erradas. Quem respondeu foi o
+    # relatório de crash.
+    #
+    # O que perdemos: um pouco de velocidade no encoder em CPU. No Apple Silicon
+    # quase nada, porque quem faz o trabalho pesado é o Metal.
+    set(GGML_ACCELERATE OFF CACHE BOOL "" FORCE)
+    set(GGML_BLAS       OFF CACHE BOOL "" FORCE)
 endif()
 
 if(DEFINED WHISPER_DIR AND EXISTS "${WHISPER_DIR}/CMakeLists.txt")
@@ -116,7 +143,7 @@ set(TL_COMMON_DEFS
 
 # recursos compartilhados (página web do celular) + hub
 juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html Resources/logoheader.png)
-set(TL_COMMON_SOURCES Source/Common/Hub.cpp Source/Common/License.cpp)
+set(TL_COMMON_SOURCES Source/Common/Hub.cpp Source/Common/License.cpp Source/Common/Log.cpp)
 
 # ---- Receiver ----
 juce_add_plugin(TranscriberLive
@@ -223,7 +250,7 @@ target_link_libraries(TranscriberLiveDisplayApp PRIVATE
 option(TRANSCRIBER_BUILD_TESTS "Compila o EngineTest" OFF)
 if(TRANSCRIBER_BUILD_TESTS)
     juce_add_console_app(EngineTest PRODUCT_NAME "EngineTest")
-    target_sources(EngineTest PRIVATE Tests/EngineTest.cpp Source/Common/TranscriptionEngine.cpp)
+    target_sources(EngineTest PRIVATE Tests/EngineTest.cpp Source/Common/TranscriptionEngine.cpp Source/Common/Log.cpp)
     target_include_directories(EngineTest PRIVATE Source Source/Common)
     target_compile_definitions(EngineTest PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 TRANSCRIBER_DEBUG=1)
     target_link_libraries(EngineTest PRIVATE juce::juce_audio_formats juce::juce_gui_basics whisper
