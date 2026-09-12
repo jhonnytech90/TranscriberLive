@@ -77,7 +77,7 @@ namespace tl
 
         //-- consulta -----------------------------------------------------------
         juce::File   getFolder() const;
-        juce::File   getFile() const            { return arquivo; }
+        juce::File   getFile() const;
         /** Ultimas linhas do arquivo desta sessao (para o botao de diagnostico). */
         juce::String tail (int numLinhas = 400);
         /** Cabecalho + ultimas linhas, pronto para colar num e-mail de suporte. */
@@ -130,6 +130,16 @@ namespace tl
         int                        proximoVitalId = 1;
 
         //-- arquivo -------------------------------------------------------------
+        // Trava do arquivo e do stream.
+        //
+        // Sem ela havia um crash real: o botao "Log" da interface chamava
+        // flushNow() e lia o arquivo na thread da UI enquanto a thread do log
+        // escrevia no mesmo stream. Duas threads no mesmo FileOutputStream
+        // derrubam o host inteiro -- foi o que aconteceu num Mac Intel.
+        //
+        // Ordem de travas, para nao travar o programa: quem pega esta PODE
+        // pegar filaLock depois; o contrario nunca acontece.
+        mutable juce::CriticalSection              saidaLock;
         juce::File                                 arquivo;
         std::unique_ptr<juce::FileOutputStream>    saida;
         juce::int64                                bytesEscritos = 0;

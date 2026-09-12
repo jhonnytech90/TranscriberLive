@@ -52,9 +52,12 @@ namespace tl
         if (! habilitado)
             return;
 
-        abrirArquivo();
-        limparAntigos();
-        escreverCabecalho();
+        {
+            const juce::ScopedLock sl (saidaLock);
+            abrirArquivo();
+            limparAntigos();
+            escreverCabecalho();
+        }
 
         // prioridade baixa: o log nunca disputa CPU com o audio nem com o whisper
         startThread (juce::Thread::Priority::background);
@@ -68,14 +71,23 @@ namespace tl
             signalThreadShouldExit();
             notify();
             stopThread (2000);
-            drenarFila();
-            drenarRt();
-            flushNow();
         }
+
+        const juce::ScopedLock sl (saidaLock);
+
+        // drenarRt ANTES de drenarFila: o rt vira texto na fila, entao drenar
+        // na ordem inversa (como estava) perderia os ultimos eventos de audio
+        // -- justamente os do momento em que algo deu errado.
+        drenarRt();
+        drenarFila();
+
+        if (saida != nullptr)
+            saida->flush();
         saida.reset();
     }
 
     //==========================================================================
+    // Chamada SEMPRE com saidaLock ja segurado.
     void Log::abrirArquivo()
     {
         auto pasta = getFolder();
@@ -103,6 +115,7 @@ namespace tl
         bytesEscritos = 0;
     }
 
+    // Chamada SEMPRE com saidaLock ja segurado.
     void Log::rolarSeNecessario()
     {
         // 8 MB por arquivo ja cobre um show inteiro com folga
@@ -131,6 +144,7 @@ namespace tl
                 arquivos[i].deleteFile();
     }
 
+    // Chamada SEMPRE com saidaLock ja segurado.
     void Log::escreverCabecalho()
     {
         using SS = juce::SystemStats;
@@ -182,6 +196,14 @@ namespace tl
     juce::File Log::getFolder() const
     {
         return dataDir().getChildFile ("logs");
+    }
+
+    juce::File Log::getFile() const
+    {
+        // a thread do log troca `arquivo` quando rotaciona: ler sem trava
+        // devolveria um caminho pela metade
+        const juce::ScopedLock sl (saidaLock);
+        return arquivo;
     }
 
     //==========================================================================
@@ -261,8 +283,9 @@ namespace tl
     {
         while (! threadShouldExit())
         {
+            // drenarRt e emitirVitais so enfileiram texto (filaLock); quem
+            // encosta no arquivo e o bloco abaixo.
             drenarRt();
-            drenarFila();
 
             const auto agora = juce::Time::getMillisecondCounterHiRes();
             if (agora - ultimoVitais >= 1000.0)
@@ -271,13 +294,19 @@ namespace tl
                 emitirVitais();
             }
 
-            flushNow();
-            rolarSeNecessario();
+            {
+                const juce::ScopedLock sl (saidaLock);
+                drenarFila();
+                if (saida != nullptr)
+                    saida->flush();
+                rolarSeNecessario();
+            }
 
             wait (200);
         }
     }
 
+    // Chamada SEMPRE com saidaLock ja segurado.
     void Log::drenarFila()
     {
         if (saida == nullptr)
@@ -396,6 +425,7 @@ namespace tl
 
     void Log::flushNow()
     {
+        const juce::ScopedLock sl (saidaLock);
         if (saida != nullptr)
             saida->flush();
     }
@@ -403,7 +433,15 @@ namespace tl
     //==========================================================================
     juce::String Log::tail (int numLinhas)
     {
-        flushNow();
+        // Trava segurada durante o flush E a leitura: se a thread do log
+        // escrever (ou rotacionar o arquivo) no meio disto, o resultado e um
+        // crash no host. Foi exatamente o que derrubou o REAPER quando o
+        // usuario clicou em "Log".
+        const juce::ScopedLock sl (saidaLock);
+
+        if (saida != nullptr)
+            saida->flush();
+
         if (! arquivo.existsAsFile())
             return "(sem arquivo de log)";
 
@@ -420,7 +458,7 @@ namespace tl
     juce::String Log::diagnostico()
     {
         return juce::String ("Transcriber Live -- diagnostico") + juce::newLine
-             + "arquivo: " + arquivo.getFullPathName() + juce::newLine
+             + "arquivo: " + getFile().getFullPathName() + juce::newLine
              + juce::newLine
              + tail (400);
     }
