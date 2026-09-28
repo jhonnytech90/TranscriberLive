@@ -1,4 +1,5 @@
 #include "ReceiverProcessor.h"
+#include "Common/Vocabulario.h"
 #include "ReceiverEditor.h"
 #include "Common/Trace.h"
 #include "Common/Log.h"
@@ -61,6 +62,15 @@ TranscriberLiveAudioProcessor::TranscriberLiveAudioProcessor()
         { TL_TRACE_STEP ("hub (rede)");         localBus.setTarget ("127.0.0.1", hub->getBusPort()); }
 
         engine.onLine = [this] (const TranscriptionEngine::Line& l) { sendLine (l); };
+
+        // Corretor de vocabulario. Nao captura `this`: roda na thread do
+        // worker do motor e o singleton vive mais que o processador, entao
+        // nao ha como ficar com ponteiro pendurado se o host descarregar o
+        // plugin no meio de uma transcricao.
+        engine.corretorDeTexto = [] (const juce::String& cru)
+        {
+            return tl::Vocabulario::obter().corrigir (cru);
+        };
         startTimer (2000);
     }
     catch (const std::exception& e)
@@ -94,6 +104,7 @@ TranscriberLiveAudioProcessor::~TranscriberLiveAudioProcessor()
     TL_LOGI ("receiver", "instancia removida");
     stopTimer();
     engine.onLine = nullptr;
+    engine.corretorDeTexto = nullptr;
 }
 
 //==============================================================================
@@ -362,6 +373,20 @@ void TranscriberLiveAudioProcessor::sendLine (const TranscriptionEngine::Line& l
     send (m);
 }
 
+void TranscriberLiveAudioProcessor::setTermosDoShow (const juce::String& t)
+{
+    {
+        const juce::ScopedLock sl (identityLock);
+        if (termosDoShow == t) return;
+        termosDoShow = t;
+    }
+
+    // O corretor le os termos do singleton, nao do processador: assim o
+    // lambda na thread do worker nao precisa capturar `this`.
+    tl::Vocabulario::obter().setTermosDoShow (t);
+    pushSettingsToEngine();
+}
+
 void TranscriberLiveAudioProcessor::pushSettingsToEngine()
 {
     auto s = engine.getSettings();
@@ -377,6 +402,7 @@ void TranscriberLiveAudioProcessor::pushSettingsToEngine()
     // irmas disputam a mesma unidade de execucao -- e o excesso ainda compete
     // com a thread de audio do host.
     s.numThreads      = juce::jlimit (2, 8, juce::SystemStats::getNumPhysicalCpus());
+    s.initialPrompt   = tl::Vocabulario::obter().montarPrompt (getTermosDoShow());
     engine.setSettings (s);
 }
 
@@ -511,6 +537,7 @@ void TranscriberLiveAudioProcessor::getStateInformation (juce::MemoryBlock& dest
     state.setProperty ("flash",      id.flash, nullptr);
     state.setProperty ("remoteHost", id.remoteHost, nullptr);
     state.setProperty ("remotePort", id.remotePort, nullptr);
+    state.setProperty ("termosDoShow", getTermosDoShow(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -538,6 +565,8 @@ void TranscriberLiveAudioProcessor::setStateInformation (const void* data, int s
             id.remoteHost = state.getProperty ("remoteHost", id.remoteHost).toString();
             id.remotePort = (int) state.getProperty ("remotePort", id.remotePort);
             setIdentity (id);
+
+            setTermosDoShow (state.getProperty ("termosDoShow", "").toString());
         }
     }
 }

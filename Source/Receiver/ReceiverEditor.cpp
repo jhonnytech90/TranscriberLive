@@ -41,7 +41,7 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
 {
     TL_TRACE ("--- editor: construindo ---");
     setLookAndFeel (&lnf);
-    setSize (680, 352);
+    setSize (680, 386);   // +34: linha dos termos do show
 
     addAndMakeVisible (logo);
 
@@ -101,6 +101,28 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
 
     networkButton.onClick = [this] { showNetwork(); };
     addAndMakeVisible (networkButton);
+
+    // ---- termos do show ----------------------------------------------------------
+    // O que mais melhora nome proprio. O whisper acerta "retorno" e "volume"
+    // sozinho; "Micael" e "Lucilene" ele so acerta se souber que existem.
+    termosLabel.setText ("Termos", juce::dontSendNotification);
+    termosEditor.setMultiLine (false);
+    termosEditor.setTextToShowWhenEmpty (
+        juce::String (juce::CharPointer_UTF8 (
+            "nomes da banda e das m\xc3\xbasicas, separados por v\xc3\xadrgula")), tl::col::dim);
+    termosEditor.setTooltip (juce::String (juce::CharPointer_UTF8 (
+        "Nomes que v\xc3\xa3o ser ditos neste show. Ajuda o reconhecimento de nome pr\xc3\xb3prio. "
+        "Curto e melhor que longo: lista grande faz o modelo inventar nome que ningu\xc3\xa9m falou.")));
+    termosEditor.setText (processor.getTermosDoShow(), juce::dontSendNotification);
+    termosEditor.onFocusLost = [this] { processor.setTermosDoShow (termosEditor.getText().trim()); };
+    termosEditor.onReturnKey = [this] { processor.setTermosDoShow (termosEditor.getText().trim()); };
+    addAndMakeVisible (termosLabel);
+    addAndMakeVisible (termosEditor);
+
+    qrButton.onClick = [this] { showQr(); };
+    qrButton.setTooltip (juce::String (juce::CharPointer_UTF8 (
+        "Mostra um QR Code para abrir o Display no celular ou tablet")));
+    addAndMakeVisible (qrButton);
 
     logButton.onClick = [this] { showLog(); };
     logButton.setTooltip ("Abre a pasta de logs e copia o diagnostico para colar no suporte");
@@ -213,6 +235,8 @@ void TranscriberLiveAudioProcessorEditor::resized()
     auto row1 = r.removeFromTop (30);
     logButton.setBounds (row1.removeFromRight (44).reduced (0, 2));
     row1.removeFromRight (6);
+    qrButton.setBounds (row1.removeFromRight (40).reduced (0, 2));
+    row1.removeFromRight (6);
     networkButton.setBounds (row1.removeFromRight (66).reduced (0, 2));
     row1.removeFromRight (6);
     licenseButton.setBounds (row1.removeFromRight (74).reduced (0, 2));
@@ -234,6 +258,13 @@ void TranscriberLiveAudioProcessorEditor::resized()
     auto row2 = r.removeFromTop (30);
     modelLabel.setBounds (row2.removeFromLeft (52));
     modelBox.setBounds (row2.reduced (0, 2));
+
+    r.removeFromTop (6);
+
+    // linha 2b: termos do show
+    auto row2b = r.removeFromTop (28);
+    termosLabel.setBounds (row2b.removeFromLeft (52));
+    termosEditor.setBounds (row2b.reduced (0, 2));
 
     r.removeFromTop (10);
 
@@ -266,7 +297,7 @@ void TranscriberLiveAudioProcessorEditor::setControlsVisible (bool v)
 {
     for (auto* c : std::initializer_list<juce::Component*> {
              &nameLabel, &nameEditor, &colourButton, &importanceLabel, &importanceBox, &flashButton,
-             &networkButton, &modelLabel, &modelBox, &meter, &speechLabel,
+             &networkButton, &qrButton, &modelLabel, &modelBox, &termosLabel, &termosEditor, &meter, &speechLabel,
              &gateSlider, &vadSlider, &holdSlider, &gateLabel, &vadLabel, &holdLabel,
              &partialsButton, &lastLineLabel })
         c->setVisible (v);
@@ -415,6 +446,124 @@ void TranscriberLiveAudioProcessorEditor::showLog()
         utf8 ("Diagn\xc3\xb3stico copiado — \xc3\xa9 s\xc3\xb3 colar no WhatsApp ou no e-mail do suporte.\n\n"
               "A pasta com os arquivos completos foi aberta:\n")
             + log.getFolder().getFullPathName(), this);
+}
+
+//==============================================================================
+juce::String TranscriberLiveAudioProcessorEditor::urlDoDisplay() const
+{
+    const auto id = processor.getIdentity();
+
+    // Qual maquina serve a pagina:
+    //
+    //  - Com "Display remoto" preenchido, quem serve e AQUELA maquina. O campo
+    //    guarda a porta do barramento (UDP, 47800); a pagina fica na porta web,
+    //    que e outra. Como o Display usa a porta web padrao, e ela que entra no
+    //    endereco -- e o painel diz isso em texto, para o caso de alguem ter
+    //    mudado a porta la.
+    //
+    //  - Sem o campo, quem serve e esta maquina.
+    if (id.remoteHost.isNotEmpty())
+        return "http://" + id.remoteHost + ":" + juce::String (tl::kDefaultHttpPort) + "/";
+
+    // 127.0.0.1 nao serve aqui: o celular tentaria falar consigo mesmo. Tem que
+    // ser o IP desta maquina na rede local.
+    const auto ips = tl::HttpServer::getLocalAddresses();
+    if (ips.isEmpty())
+        return {};
+
+    return "http://" + ips[0] + ":" + juce::String (processor.hub->getHttpPort()) + "/";
+}
+
+void TranscriberLiveAudioProcessorEditor::showQr()
+{
+    const auto url = urlDoDisplay();
+
+    struct Panel : juce::Component
+    {
+        juce::Label      titulo, endereco, aviso;
+        juce::TextButton copiar { "Copiar endere" + juce::String (juce::CharPointer_UTF8 ("\xc3\xa7" "o")) };
+        tl::QrCode       qr;
+        bool             temQr = false;
+
+        void paint (juce::Graphics& g) override
+        {
+            if (! temQr) return;
+            // Fundo branco sempre, mesmo no tema escuro: leitor de celular
+            // espera escuro sobre claro, e QR invertido muitos aparelhos nao
+            // leem.
+            qr.desenhar (g, areaQr, juce::Colours::white, juce::Colours::black);
+        }
+
+        juce::Rectangle<int> areaQr;
+
+        void resized() override
+        {
+            auto r = getLocalBounds().reduced (10);
+            titulo.setBounds (r.removeFromTop (20));
+            r.removeFromTop (6);
+            areaQr = r.removeFromTop (190);
+            r.removeFromTop (8);
+            endereco.setBounds (r.removeFromTop (20));
+            aviso.setBounds (r.removeFromTop (32));
+            r.removeFromTop (6);
+            copiar.setBounds (r.removeFromTop (26));
+        }
+    };
+
+    auto panel = std::make_unique<Panel>();
+    auto* p = panel.get();
+
+    for (auto* c : std::initializer_list<juce::Component*> { &p->titulo, &p->endereco, &p->aviso, &p->copiar })
+        p->addAndMakeVisible (c);
+
+    p->titulo.setJustificationType (juce::Justification::centred);
+    p->endereco.setJustificationType (juce::Justification::centred);
+    p->endereco.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    p->aviso.setJustificationType (juce::Justification::centredTop);
+    p->aviso.setFont (juce::FontOptions (11.0f));
+    p->aviso.setColour (juce::Label::textColourId, tl::col::dim);
+    p->setSize (260, 320);
+
+    if (url.isEmpty())
+    {
+        p->titulo.setText ("Sem rede", juce::dontSendNotification);
+        p->aviso.setText (juce::String (juce::CharPointer_UTF8 (
+            "Esta m\xc3\xa1quina n\xc3\xa3o tem endere\xc3\xa7o de rede local. "
+            "Conecte no mesmo Wi-Fi do celular.")), juce::dontSendNotification);
+        p->copiar.setEnabled (false);
+        p->setSize (260, 150);
+    }
+    else if (! tl::QrCode::gerar (url, p->qr))
+    {
+        // Endereco longo demais para as versoes que geramos. Nao acontece com
+        // IP de rede local, mas se acontecer o tecnico ainda consegue digitar.
+        p->titulo.setText ("Endere" + juce::String (juce::CharPointer_UTF8 ("\xc3\xa7" "o")) + " para o celular",
+                           juce::dontSendNotification);
+        p->endereco.setText (url, juce::dontSendNotification);
+        p->aviso.setText (juce::String (juce::CharPointer_UTF8 (
+            "N\xc3\xa3o consegui gerar o QR para este endere\xc3\xa7o. Digite no navegador.")),
+            juce::dontSendNotification);
+        p->setSize (260, 170);
+    }
+    else
+    {
+        p->temQr = true;
+        const auto id = processor.getIdentity();
+        p->titulo.setText (juce::String (juce::CharPointer_UTF8 (
+            "Aponte a c\xc3\xa2mera do celular")), juce::dontSendNotification);
+        p->endereco.setText (url, juce::dontSendNotification);
+        p->aviso.setText (id.remoteHost.isNotEmpty()
+            ? juce::String (juce::CharPointer_UTF8 (
+                "Display em outra m\xc3\xa1quina, porta web padr\xc3\xa3o. "
+                "Celular e Display na mesma rede."))
+            : juce::String (juce::CharPointer_UTF8 (
+                "Celular e computador precisam estar na mesma rede Wi-Fi.")),
+            juce::dontSendNotification);
+    }
+
+    p->copiar.onClick = [url] { juce::SystemClipboard::copyTextToClipboard (url); };
+
+    juce::CallOutBox::launchAsynchronously (std::move (panel), qrButton.getScreenBounds(), nullptr);
 }
 
 void TranscriberLiveAudioProcessorEditor::showNetwork()

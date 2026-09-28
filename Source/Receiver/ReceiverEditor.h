@@ -6,6 +6,7 @@
 #include "Common/DarkLookAndFeel.h"
 #include "Common/Branding.h"
 #include "Common/LicenseComponent.h"
+#include "Common/QrCode.h"
 
 //==============================================================================
 /** Medidor de nível com a linha do gate desenhada por cima. */
@@ -41,6 +42,8 @@ private:
     void applyIdentityFromUi();
     void loadIdentityToUi();
     void showNetwork();
+    void showQr();
+    juce::String urlDoDisplay() const;
     void showLog();
     void refreshLicenseUi();
     void setControlsVisible (bool);
@@ -50,11 +53,12 @@ private:
     tl::LogoBadge logo;
 
     juce::Label        statusLabel, speechLabel, lastLineLabel;
-    juce::Label        nameLabel, importanceLabel, modelLabel, gateLabel, vadLabel, holdLabel;
-    juce::TextEditor   nameEditor;
+    juce::Label        nameLabel, importanceLabel, modelLabel, gateLabel, vadLabel, holdLabel, termosLabel;
+    juce::TextEditor   nameEditor, termosEditor;
     juce::TextButton   colourButton { "Cor" }, networkButton { "Rede..." },
                        licenseButton { juce::String (juce::CharPointer_UTF8 ("Licen\xc3\xa7" "a")) },
-                       logButton { "Log" };
+                       logButton { "Log" },
+                       qrButton { "QR" };
     juce::ComboBox     importanceBox, modelBox;
     juce::ToggleButton flashButton { "Flash" }, partialsButton { "Parciais" };
     LevelMeter         meter;

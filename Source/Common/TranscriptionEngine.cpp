@@ -533,9 +533,20 @@ juce::String TranscriptionEngine::transcribe (const std::vector<float>& audio, b
     p.abort_callback = [] (void* user) -> bool { return static_cast<juce::Thread*> (user)->threadShouldExit(); };
     p.abort_callback_user_data = static_cast<juce::Thread*> (this);
 
-    // contexto ajuda o modelo a entender o domínio
-    static const char* prompt = "Comunicação de palco entre cantor e técnico de som durante o show.";
-    p.initial_prompt = prompt;
+    // Contexto do domínio. Vem de fora (tl::Vocabulario), para que os nomes
+    // da banda e das músicas deste show entrem aqui -- é o que mais melhora
+    // nome próprio, que era justamente o que o whisper mais errava.
+    //
+    // A cópia em `promptUtf8` não é desperdício: `s` é uma cópia local das
+    // settings e morre no fim da função, mas o whisper guarda o ponteiro e só
+    // o usa dentro de whisper_full(). Manter a string viva aqui é o que
+    // garante que ele não leia memória liberada.
+    static const char* const promptPadrao =
+        "Comunicação de palco entre cantor e técnico de som durante o show.";
+
+    const juce::String promptUtf8 = s.initialPrompt.isNotEmpty() ? s.initialPrompt
+                                                                 : juce::String (juce::CharPointer_UTF8 (promptPadrao));
+    p.initial_prompt = promptUtf8.toRawUTF8();
 
     // whisper exige >= 1 s de áudio: preenche com silêncio se preciso
     std::vector<float> padded (audio);
@@ -561,6 +572,22 @@ juce::String TranscriptionEngine::transcribe (const std::vector<float>& audio, b
                 continue;
 
             result += juce::String::fromUTF8 (whisper_full_get_segment_text (ctx, i));
+        }
+
+        // Correcao de vocabulario, DEPOIS do whisper. Roda aqui, na thread do
+        // worker, e nao na thread da UI: e trabalho de texto e nao pode
+        // atrasar o desenho da tela.
+        //
+        // Fica fora do cronometro do RTF de proposito -- o RTF mede se a
+        // maquina acompanha o MODELO, e misturar o custo do corretor nessa
+        // conta faria o plugin trocar de modelo por causa do corretor.
+        if (corretorDeTexto != nullptr && result.isNotEmpty())
+        {
+            const auto antes = result;
+            result = corretorDeTexto (result);
+
+            if (result != antes)
+                TL_LOGD ("vocab", "corrigido: \"" + antes.trim() + "\" -> \"" + result.trim() + "\"");
         }
     }
     else

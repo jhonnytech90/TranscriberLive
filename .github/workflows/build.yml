@@ -25,13 +25,59 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # -----------------------------------------------------------------------
+      # Windows: a mesma trava que existe no macOS.
+      #
+      # O ggml precisa sair daqui com AVX2/FMA ligados. Ja rodamos meses com
+      # eles DESLIGADOS (TRANSCRIBER_PORTABLE_CPU=ON) e o sintoma na mao do
+      # cliente foi atraso de 40 s a 3 min -- e texto errado, porque a
+      # lentidao dispara a troca automatica de modelo e o modo economico.
+      # Um build sem SIMD nao pode mais sair daqui calado.
+      # -----------------------------------------------------------------------
       - name: Configure (Windows)
         if: matrix.os == 'windows-2022'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRANSCRIBER_COPY_PLUGIN=OFF -G "Visual Studio 17 2022" -A x64
+        shell: bash
+        run: |
+          set -e -o pipefail
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRANSCRIBER_COPY_PLUGIN=OFF \
+                -DTRANSCRIBER_PORTABLE_CPU=OFF \
+                -G "Visual Studio 17 2022" -A x64 2>&1 | tee cfg-win.log
+
+          if grep -qi "Unknown CPU architecture" cfg-win.log; then
+            echo "::error::ggml caiu no modo generico no Windows -- SIMD desligado"
+            exit 1
+          fi
+          if ! grep -qiE "x86 detected|AVX2|arch:AVX2" cfg-win.log; then
+            echo "::error::o configure nao reportou AVX2 -- o motor sairia escalar"
+            grep -iE "detected|AVX|FMA|F16C|SIMD" cfg-win.log || true
+            exit 1
+          fi
+          echo "SIMD detectado no Windows:"
+          grep -iE "x86 detected|AVX|FMA|F16C" cfg-win.log | sort -u || true
 
       - name: Build (Windows)
         if: matrix.os == 'windows-2022'
         run: cmake --build build --config Release --target ${{ matrix.targets }} --parallel 4
+
+      # -----------------------------------------------------------------------
+      # Testes de vocabulario e QR Code.
+      #
+      # Rodam so no Windows por economia: o codigo testado nao tem nada de
+      # especifico de plataforma, e uma passada ja pega a regressao. Os dois
+      # bugs que motivaram estes testes (o corretor trocando "ponto" por
+      # "ponte", e o Reed-Solomon montado ao contrario) passariam batido em
+      # qualquer revisao de codigo -- os dois produziam saida plausivel.
+      # -----------------------------------------------------------------------
+      - name: Testes (vocabulario e QR)
+        if: matrix.os == 'windows-2022'
+        shell: bash
+        run: |
+          set -e
+          cmake -B build-tests -DCMAKE_BUILD_TYPE=Release -DTRANSCRIBER_BUILD_TESTS=ON \
+                -DTRANSCRIBER_COPY_PLUGIN=OFF -DTRANSCRIBER_PORTABLE_CPU=OFF \
+                -G "Visual Studio 17 2022" -A x64 > /dev/null
+          cmake --build build-tests --config Release --target VocabQrTest --parallel 4
+          ./build-tests/VocabQrTest_artefacts/Release/VocabQrTest.exe
 
       # -----------------------------------------------------------------------
       # macOS: UMA PASSADA POR ARQUITETURA, depois lipo.

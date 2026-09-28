@@ -85,9 +85,29 @@ set(GGML_NATIVE            OFF CACHE BOOL "" FORCE)   # binário portátil (não
 # mensagem nenhuma. O Display não usa o ggml, então continua abrindo normal: é
 # exatamente esse o sintoma.
 #
-# TRANSCRIBER_PORTABLE_CPU=ON  -> roda em qualquer x86-64 (padrão, para vender)
-# TRANSCRIBER_PORTABLE_CPU=OFF -> deixa o ggml usar AVX2/FMA (mais rápido, exige CPU 2013+)
-option(TRANSCRIBER_PORTABLE_CPU "Compila o ggml sem AVX/AVX2 (roda em qualquer x86-64)" ON)
+# ---------------------------------------------------------------------------
+# PADRAO: OFF (com AVX2). Isto ja foi ON e custou caro.
+# ---------------------------------------------------------------------------
+# Ligar este ON no Windows desligava AVX, AVX2, FMA e F16C do ggml INTEIRO. O
+# resultado e o mesmo bug que tivemos no macOS por outro caminho: o motor roda
+# escalar, puro, e fica varias vezes mais lento. No Windows isso apareceu como
+# "transcreve com 40 s a 3 min de atraso" -- e, pior, como TEXTO ERRADO, porque
+# a lentidao dispara a troca automatica para um modelo menor e depois o modo
+# economico. Ou seja: uma flag de compilacao virou perda de qualidade.
+#
+# A troca nao valia: AVX2 existe em todo x86-64 de 2013 em diante (Intel
+# Haswell, AMD Excavator/Ryzen). Maquina anterior a isso nao transcreve em
+# tempo real de jeito nenhum, com ou sem SIMD -- entao desligar AVX2 nao
+# "salvava" essa maquina, so penalizava todas as outras.
+#
+# O que protege a CPU antiga NAO e esta flag, e a guarda de runtime
+# TL_REQUIRES_AVX2 (TranscriptionEngine.cpp): o plugin confere a CPU antes de
+# carregar o modelo e mostra uma mensagem clara, em vez de morrer com
+# instrucao ilegal e levar o host junto.
+#
+# TRANSCRIBER_PORTABLE_CPU=OFF -> ggml usa AVX2/FMA (padrao; exige CPU 2013+)
+# TRANSCRIBER_PORTABLE_CPU=ON  -> sem SIMD nenhum; SO para depurar, nao para vender
+option(TRANSCRIBER_PORTABLE_CPU "Compila o ggml sem AVX/AVX2 (lento; so para depurar)" OFF)
 
 # No macOS isto NAO se aplica, de propósito (decisão consciente, não esquecimento):
 # desligar AVX2 custaria de 1,5x a 2x de velocidade em TODO Mac Intel — incluindo
@@ -176,8 +196,8 @@ set(TL_COMMON_DEFS
     ${TL_CPU_DEFS})
 
 # recursos compartilhados (página web do celular) + hub
-juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html Resources/logoheader.png)
-set(TL_COMMON_SOURCES Source/Common/Hub.cpp Source/Common/License.cpp Source/Common/Log.cpp)
+juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html Resources/logoheader.png Resources/vocabulario-pt-br.txt)
+set(TL_COMMON_SOURCES Source/Common/Hub.cpp Source/Common/License.cpp Source/Common/Log.cpp Source/Common/Vocabulario.cpp Source/Common/QrCode.cpp)
 
 # ---- Receiver ----
 juce_add_plugin(TranscriberLive
@@ -284,10 +304,10 @@ target_link_libraries(TranscriberLiveDisplayApp PRIVATE
 option(TRANSCRIBER_BUILD_TESTS "Compila o EngineTest" OFF)
 if(TRANSCRIBER_BUILD_TESTS)
     juce_add_console_app(EngineTest PRODUCT_NAME "EngineTest")
-    target_sources(EngineTest PRIVATE Tests/EngineTest.cpp Source/Common/TranscriptionEngine.cpp Source/Common/Log.cpp)
+    target_sources(EngineTest PRIVATE Tests/EngineTest.cpp Source/Common/TranscriptionEngine.cpp Source/Common/Log.cpp Source/Common/Vocabulario.cpp)
     target_include_directories(EngineTest PRIVATE Source Source/Common)
     target_compile_definitions(EngineTest PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 TRANSCRIBER_DEBUG=1)
-    target_link_libraries(EngineTest PRIVATE juce::juce_audio_formats juce::juce_gui_basics whisper
+    target_link_libraries(EngineTest PRIVATE TranscriberDisplayData juce::juce_audio_formats juce::juce_gui_basics whisper
         PUBLIC juce::juce_recommended_config_flags)
 
     juce_add_console_app(LicenseTest PRODUCT_NAME "LicenseTest")
@@ -295,6 +315,13 @@ if(TRANSCRIBER_BUILD_TESTS)
     target_include_directories(LicenseTest PRIVATE Source)
     target_compile_definitions(LicenseTest PRIVATE ${TL_COMMON_DEFS})
     target_link_libraries(LicenseTest PRIVATE TranscriberDisplayData juce::juce_cryptography juce::juce_graphics juce::juce_events juce::juce_core
+        PUBLIC juce::juce_recommended_config_flags)
+
+    juce_add_console_app(VocabQrTest PRODUCT_NAME "VocabQrTest")
+    target_sources(VocabQrTest PRIVATE Tests/VocabQrTest.cpp Source/Common/Vocabulario.cpp Source/Common/QrCode.cpp Source/Common/Log.cpp)
+    target_include_directories(VocabQrTest PRIVATE Source)
+    target_compile_definitions(VocabQrTest PRIVATE ${TL_COMMON_DEFS})
+    target_link_libraries(VocabQrTest PRIVATE TranscriberDisplayData juce::juce_graphics juce::juce_events juce::juce_core
         PUBLIC juce::juce_recommended_config_flags)
 
     juce_add_gui_app(ReceiverTest PRODUCT_NAME "ReceiverTest")

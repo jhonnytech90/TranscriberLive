@@ -53,7 +53,24 @@ public:
         int    partialIntervalMs  = 1500;    // atualiza texto parcial enquanto fala
         bool   showPartials       = true;
         int    numThreads         = 4;
+
+        /** Contexto passado ao whisper antes de cada frase (initial_prompt).
+            Quem monta e tl::Vocabulario -- o motor so entrega. Vazio = o
+            whisper decide sozinho.
+
+            CUIDADO com o tamanho: o whisper corta em 224 tokens
+            (n_text_ctx/2) guardando os ULTIMOS, e esses tokens sao
+            recalculados a CADA frase. Prompt longo custa tempo em toda
+            transcricao e ainda faz o modelo inventar palavra que nao foi
+            dita. Curto e especifico ganha de longo e generico. */
+        juce::String initialPrompt;
     };
+
+    /** Chamado na thread do worker com o texto cru do whisper, antes de
+        publicar. Devolve o texto corrigido. Existe para o vocabulario
+        consertar palavra quase-certa sem que o motor precise conhecer o
+        vocabulario. Se ficar vazio, o texto sai como o whisper produziu. */
+    std::function<juce::String (const juce::String&)> corretorDeTexto;
 
     TranscriptionEngine();
     ~TranscriptionEngine() override;

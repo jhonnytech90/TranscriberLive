@@ -1,0 +1,332 @@
+# ---------------------------------------------------------------------------
+# Vocabulario PT-BR do Transcriber Live
+# ---------------------------------------------------------------------------
+# Tres usos, e a diferenca entre eles importa:
+#
+#   1) secao [prompt] -> vai para o initial_prompt do whisper, ANTES de
+#      transcrever. Inclina o modelo para este dominio. O whisper corta em
+#      224 tokens (n_text_ctx/2) e guarda os ULTIMOS, e esses tokens sao
+#      recalculados a CADA frase. Por isso e curto. Lista grande aqui nao
+#      ajuda: e cortada E faz o modelo inventar palavra que ninguem falou.
+#
+#   2) secao [acentos] -> DEPOIS de transcrever. So conserta a GRAFIA de uma
+#      palavra que saiu com as MESMAS letras: "equalizacao" recebe a cedilha
+#      e o til, "Jonatas" recebe o circunflexo. Nunca troca uma palavra por
+#      outra. Por isso esta lista pode ser enorme sem risco nenhum.
+#
+#   3) campo "Termos" da interface -> nomes da banda e das musicas DESTE
+#      show. E a unica coisa que recebe correcao por APROXIMACAO (trocar
+#      palavra parecida por outra), porque a lista e curta e especifica.
+#
+#      Aproximacao contra lista generica nao presta, e isso foi medido: com
+#      a lista toda habilitada, "nao consigo ouvir o meu ponto" saia como
+#      "meu ponte", porque "ponte" esta na lista e fica a uma letra de
+#      distancia. Num show, trocar uma palavra certa por outra e pior do
+#      que nao corrigir nada.
+#
+# Linha comecando com # e comentario. Uma entrada por linha.
+# Este arquivo fica na pasta de dados do plugin e pode ser editado.
+# ---------------------------------------------------------------------------
+
+[prompt]
+# Frase de dominio. Sai primeiro e e a primeira a ser cortada se faltar espaco.
+Comunicação de palco entre cantor e tecnico de som durante o show.
+# Jargão que mais aparece na fala do cantor para a tecnica.
+retorno, monitor, in-ear, ponto, side, volume, grave, agudo, microfonia,
+mesa, canal, mix, voz, violão, guitarra, baixo, bateria, teclado, sanfona,
+sobe, abaixa, tira, corta, liga, desliga, aumenta, diminui, passagem de som.
+
+[acentos]
+# --- palco, backstage e equipamento -----------------------------------------
+retorno
+monitor
+in-ear
+ponto eletrônico
+side fill
+praticável
+coxia
+camarim
+backline
+palco
+plateia
+casa
+camarote
+mesa de som
+console
+canal
+subgrupo
+auxiliar
+mix
+fader
+ganho
+gain
+mute
+solo
+PFL
+equalização
+grave
+médio
+agudo
+compressor
+gate
+reverb
+delay
+efeito
+microfonia
+vazamento
+phantom
+direct box
+cabo XLR
+cabo P10
+medley
+passagem de som
+soundcheck
+setlist
+repertório
+playback
+clique
+metrônomo
+guia
+virada
+refrão
+ponte
+introdução
+bis
+abertura
+encerramento
+# --- instrumentos e vozes ---------------------------------------------------
+violão
+viola
+cavaco
+cavaquinho
+guitarra
+baixo
+bateria
+bumbo
+caixa
+chimbal
+surdo
+pratos
+overhead
+percussão
+pandeiro
+tamborim
+repique
+sanfona
+acordeon
+teclado
+piano
+saxofone
+trompete
+trombone
+vocal
+backing vocal
+coro
+# --- girias e expressoes brasileiras de uso comum ---------------------------
+beleza
+tranquilo
+suave
+firmeza
+valeu
+manda ver
+bora
+partiu
+massa
+maneiro
+show de bola
+da hora
+tamo junto
+fechou
+demorou
+pode crer
+tá ligado
+sacou
+mano
+parceiro
+meu irmão
+galera
+molecada
+rapaziada
+pessoal
+gente
+caramba
+poxa
+eita
+uai
+oxe
+vixe
+arretado
+danado
+sinistro
+pegada
+gás
+raça
+garra
+# --- nomes masculinos comuns no Brasil --------------------------------------
+João
+José
+Antônio
+Francisco
+Carlos
+Paulo
+Pedro
+Lucas
+Luiz
+Marcos
+Luís
+Gabriel
+Rafael
+Daniel
+Marcelo
+Bruno
+Eduardo
+Felipe
+Raimundo
+Rodrigo
+Manoel
+Nelson
+Roberto
+Fábio
+Alexandre
+Jônatas
+Jhonatan
+Jonathan
+Micael
+Michel
+Miguel
+Matheus
+Mateus
+Guilherme
+Gustavo
+Leonardo
+Vinícius
+Thiago
+Tiago
+Ricardo
+Renato
+Sérgio
+Fernando
+André
+Anderson
+Alex
+Adriano
+Wesley
+Wellington
+Douglas
+Diego
+Caio
+Cleber
+Cristiano
+Danilo
+Edson
+Elton
+Emerson
+Evandro
+Everton
+Fabricio
+Geraldo
+Gilberto
+Hélio
+Henrique
+Igor
+Ivan
+Jair
+Jefferson
+Jorge
+Juliano
+Júlio
+Kevin
+Leandro
+Leonel
+Lúcio
+Maicon
+Maurício
+Moacir
+Nícolas
+Osvaldo
+Otávio
+Patrick
+Rogério
+Ronaldo
+Samuel
+Sandro
+Saulo
+Sílvio
+Valdir
+Vanderlei
+Wagner
+Waldir
+Washington
+Willian
+# --- nomes femininos comuns no Brasil ---------------------------------------
+Maria
+Ana
+Francisca
+Antônia
+Adriana
+Juliana
+Márcia
+Fernanda
+Patrícia
+Aline
+Sandra
+Camila
+Amanda
+Bruna
+Jéssica
+Letícia
+Júlia
+Luciana
+Vanessa
+Mariana
+Gabriela
+Vera
+Vitória
+Larissa
+Tatiane
+Rafaela
+Beatriz
+Carla
+Carolina
+Cristiane
+Daniela
+Débora
+Eliane
+Elisângela
+Fabiana
+Flávia
+Gisele
+Helena
+Isabela
+Jaqueline
+Joana
+Josefa
+Kelly
+Laís
+Lúcia
+Lucilene
+Luana
+Manuela
+Marcela
+Michele
+Mônica
+Natália
+Neusa
+Priscila
+Regina
+Renata
+Rosângela
+Rosa
+Sabrina
+Silvana
+Simone
+Sônia
+Sueli
+Taís
+Talita
+Tânia
+Teresa
+Valéria
+Vânia
+Viviane
+Yasmin
