@@ -54,8 +54,8 @@ private:
     tl::LogoBadge logo;
 
     juce::Label        statusLabel, speechLabel, lastLineLabel;
-    juce::Label        nameLabel, importanceLabel, modelLabel, gateLabel, vadLabel, holdLabel, termosLabel;
-    juce::TextEditor   nameEditor, termosEditor;
+    juce::Label        nameLabel, importanceLabel, modelLabel, gateLabel, vadLabel, holdLabel;
+    juce::TextEditor   nameEditor;
     juce::TextButton   colourButton { "Cor" }, networkButton { "Rede..." },
                        licenseButton { juce::String (juce::CharPointer_UTF8 ("Licen\xc3\xa7" "a")) },
                        logButton { "Log" },

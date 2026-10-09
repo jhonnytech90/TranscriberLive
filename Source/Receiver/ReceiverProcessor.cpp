@@ -399,20 +399,6 @@ void TranscriberLiveAudioProcessor::sendLine (const TranscriptionEngine::Line& l
     send (m);
 }
 
-void TranscriberLiveAudioProcessor::setTermosDoShow (const juce::String& t)
-{
-    {
-        const juce::ScopedLock sl (identityLock);
-        if (termosDoShow == t) return;
-        termosDoShow = t;
-    }
-
-    // O corretor le os termos do singleton, nao do processador: assim o
-    // lambda na thread do worker nao precisa capturar `this`.
-    tl::Vocabulario::obter().setTermosDoShow (t);
-    pushSettingsToEngine();
-}
-
 void TranscriberLiveAudioProcessor::pushSettingsToEngine()
 {
     auto s = engine.getSettings();
@@ -428,7 +414,7 @@ void TranscriberLiveAudioProcessor::pushSettingsToEngine()
     // irmas disputam a mesma unidade de execucao -- e o excesso ainda compete
     // com a thread de audio do host.
     s.numThreads      = juce::jlimit (2, 8, juce::SystemStats::getNumPhysicalCpus());
-    s.initialPrompt   = tl::Vocabulario::obter().montarPrompt (getTermosDoShow());
+    s.initialPrompt   = tl::Vocabulario::obter().montarPrompt();
     engine.setSettings (s);
 }
 
@@ -563,7 +549,6 @@ void TranscriberLiveAudioProcessor::getStateInformation (juce::MemoryBlock& dest
     state.setProperty ("flash",      id.flash, nullptr);
     state.setProperty ("remoteHost", id.remoteHost, nullptr);
     state.setProperty ("remotePort", id.remotePort, nullptr);
-    state.setProperty ("termosDoShow", getTermosDoShow(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -592,7 +577,6 @@ void TranscriberLiveAudioProcessor::setStateInformation (const void* data, int s
             id.remotePort = (int) state.getProperty ("remotePort", id.remotePort);
             setIdentity (id);
 
-            setTermosDoShow (state.getProperty ("termosDoShow", "").toString());
         }
     }
 }

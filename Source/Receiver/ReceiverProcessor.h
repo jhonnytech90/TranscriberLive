@@ -69,12 +69,6 @@ public:
         porque a maquina nao acompanhava (a UI mostra isso ao usuario). */
     juce::String      getTrocaAutomatica() const         { return trocaAutomatica; }
 
-    //-- Vocabulario ---------------------------------------------------------------
-    /** Nomes da banda, das musicas, apelidos: o que vai ser dito NESTE show.
-        E o que mais melhora nome proprio, porque entra no fim do prompt, que
-        e a parte que sobrevive ao corte de 224 tokens do whisper. */
-    juce::String getTermosDoShow() const   { const juce::ScopedLock sl (identityLock); return termosDoShow; }
-    void         setTermosDoShow (const juce::String& t);
     void              selectModel (const juce::String& fileName);
     bool              hasVadModel() const                { return vadFile.existsAsFile(); }
 
@@ -136,7 +130,6 @@ private:
 
     juce::String selectedModel;
     juce::String trocaAutomatica;   // preenchido quando o plugin rebaixa o modelo sozinho
-    juce::String termosDoShow;      // protegido por identityLock
     juce::File   modelFile, vadFile;
 
     mutable juce::CriticalSection identityLock;

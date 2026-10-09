@@ -73,6 +73,63 @@ namespace tl
             return s;
         }
 
+        //-- escrita pelos celulares ------------------------------------------------
+        /*  Estes quatro metodos existem porque o servidor web pode nao estar
+            NESTE processo. Quando o app do Display esta aberto ao lado, e ele
+            quem segurou a porta, e o Receiver vira secundario -- mas quem
+            desenha o QR Code (e quem tem a chave geral na interface) e o
+            Receiver. Entao: se somos o primario, mexemos direto; se nao,
+            falamos com o primario por 127.0.0.1, que e o unico endereco que
+            /token aceita.                                                    */
+
+        /** Codigo que vai dentro do QR. Vazio = nao consegui falar com o
+            primario; quem chama decide o que mostrar. */
+        juce::String getTokenEscrita() const
+        {
+            if (isWebPrimary())
+                return web.getToken();
+
+            const juce::ScopedLock sl (tokenRemotoLock);
+            return tokenRemoto;
+        }
+
+        bool isEscritaPermitida() const
+        {
+            if (isWebPrimary())
+                return web.isEscritaPermitida();
+
+            const juce::ScopedLock sl (tokenRemotoLock);
+            return escritaRemota;
+        }
+
+        void setEscritaPermitida (bool permitir)
+        {
+            if (isWebPrimary())
+            {
+                web.setEscritaPermitida (permitir);
+                salvarEscrita (permitir);
+                return;
+            }
+
+            falarComPrimario (permitir, false);
+            salvarEscrita (permitir);
+        }
+
+        /** Sorteia um codigo novo: os aparelhos que ja entraram param de
+            escrever ate lerem o QR de novo. E o "corta o acesso daquele
+            sujeito" sem desligar a funcao para todo mundo. */
+        void trocarTokenEscrita()
+        {
+            if (isWebPrimary())
+            {
+                web.sortearToken();
+                TL_LOGI ("hub", "codigo de escrita trocado");
+                return;
+            }
+
+            falarComPrimario (isEscritaPermitida(), true);
+        }
+
         void setPorts (int newBusPort, int newHttpPort)
         {
             busPort  = newBusPort  > 0 ? newBusPort  : kDefaultBusPort;
@@ -190,6 +247,13 @@ namespace tl
                     const bool ok = json.isNotEmpty();
                     mirroring.store (ok);
                     if (ok) store.applyStateJson (json);
+
+                    // Aproveita a volta para trazer o codigo de escrita do
+                    // primario. Fica aqui, e nao na interface, porque e uma
+                    // chamada de rede: na thread da UI ela travaria a janela
+                    // do plugin toda vez que o primario demorasse.
+                    if (ok) buscarTokenDoPrimario();
+
                     wait (ok ? 400 : 1500);
                 }
                 else
@@ -200,6 +264,56 @@ namespace tl
             }
         }
 
+        //-- ponte com o primario (so 127.0.0.1 responde a /token) -----------------
+        juce::String pedir (const juce::String& corpoPost) const
+        {
+            juce::URL url ("http://127.0.0.1:" + juce::String (httpPort) + "/token");
+
+            if (corpoPost.isNotEmpty())
+                url = url.withPOSTData (corpoPost);
+
+            auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inPostData)
+                            .withConnectionTimeoutMs (800)
+                            .withExtraHeaders ("Content-Type: application/json")
+                            .withHttpRequestCmd (corpoPost.isNotEmpty() ? "POST" : "GET");
+
+            if (auto in = url.createInputStream (opts))
+                return in->readEntireStreamAsString();
+
+            return {};
+        }
+
+        void guardarResposta (const juce::String& json)
+        {
+            if (auto* o = juce::JSON::parse (json).getDynamicObject())
+            {
+                const juce::ScopedLock sl (tokenRemotoLock);
+                tokenRemoto   = o->getProperty ("token").toString();
+                escritaRemota = (bool) o->getProperty ("escrita");
+            }
+        }
+
+        void buscarTokenDoPrimario() { guardarResposta (pedir ({})); }
+
+        void falarComPrimario (bool permitir, bool novoToken)
+        {
+            // Em thread propria: isto sai de um clique na interface, e uma
+            // chamada de rede sincrona ali travaria a janela do plugin.
+            juce::Thread::launch ([this, permitir, novoToken]
+            {
+                auto* o = new juce::DynamicObject();
+                o->setProperty ("escrita", permitir);
+                o->setProperty ("novo", novoToken);
+                guardarResposta (pedir (juce::JSON::toString (juce::var (o), true)));
+            });
+        }
+
+        void salvarEscrita (bool permitir)
+        {
+            escritaSalva = permitir;
+            saveSettings();
+        }
+
         void loadSettings()
         {
             auto f = getDataDir().getChildFile ("settings.xml");
@@ -207,7 +321,10 @@ namespace tl
             {
                 busPort  = xml->getIntAttribute ("busPort",  kDefaultBusPort);
                 httpPort = xml->getIntAttribute ("httpPort", kDefaultHttpPort);
+                escritaSalva = xml->getBoolAttribute ("escritaCelular", true);
             }
+
+            web.setEscritaPermitida (escritaSalva);
         }
 
         void saveSettings()
@@ -215,6 +332,7 @@ namespace tl
             juce::XmlElement xml ("TranscriberLive");
             xml.setAttribute ("busPort", busPort);
             xml.setAttribute ("httpPort", httpPort);
+            xml.setAttribute ("escritaCelular", escritaSalva);
             getDataDir().createDirectory();
             xml.writeTo (getDataDir().getChildFile ("settings.xml"));
         }
@@ -223,5 +341,12 @@ namespace tl
         HttpServer  web;
         int busPort = kDefaultBusPort, httpPort = kDefaultHttpPort;
         std::atomic<bool> mirroring { false };
+
+        bool escritaSalva = true;
+
+        // Copia do que o primario respondeu, quando o servidor nao e nosso.
+        mutable juce::CriticalSection tokenRemotoLock;
+        juce::String tokenRemoto;
+        bool         escritaRemota = true;
     };
 }

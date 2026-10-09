@@ -34,6 +34,33 @@
   .msg.imp3 { outline:2px solid var(--urgent); } .msg.imp3 .text { font-weight:700; font-size:calc(var(--font) + 4px); }
   #flash { position:fixed; inset:0; pointer-events:none; opacity:0; background:#fff; }
   #empty { color:var(--dim); text-align:center; padding:40px 20px; font-size:16px; }
+
+  /* --- barra de digitar ---------------------------------------------------
+     Fica FORA do #main (que rola) e colada embaixo, para o teclado do celular
+     nao empurrar a conversa para fora da tela.                              */
+  #compose { flex:0 0 auto; display:none; gap:8px; padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:var(--panel); border-top:1px solid #2b333c; align-items:center; }
+  #compose.ativo { display:flex; }
+  #eu { width:34px; height:34px; border-radius:50%; border:2px solid #2b333c; flex:0 0 auto; padding:0; }
+  #texto { flex:1; min-width:0; background:#0e1114; color:var(--text); border:1px solid #2b333c; border-radius:10px; padding:11px 12px; font-size:16px; font-family:inherit; }
+  #texto:focus { outline:none; border-color:#8a95a3; }
+  #enviar { background:#3a4450; color:var(--text); border:1px solid #2b333c; border-radius:10px; padding:11px 16px; font-size:15px; font-weight:600; flex:0 0 auto; }
+  #enviar:disabled { opacity:.4; }
+  #soleitura { flex:0 0 auto; display:none; padding:10px; background:var(--panel); border-top:1px solid #2b333c; font-size:12px; color:var(--dim); text-align:center; }
+  #soleitura.ativo { display:block; }
+
+  /* --- quem sou eu (abre ao tocar na bolinha de cor) --- */
+  #euPainel { position:fixed; inset:0; background:rgba(0,0,0,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:10; }
+  #euPainel.ativo { display:flex; }
+  #euCard { background:var(--panel); border-radius:14px; padding:18px; width:100%; max-width:340px; }
+  #euCard h2 { margin:0 0 14px; font-size:15px; letter-spacing:1px; color:var(--accent); }
+  #euCard label { display:block; font-size:12px; color:var(--dim); margin:12px 0 6px; }
+  #euNome { width:100%; background:#0e1114; color:var(--text); border:1px solid #2b333c; border-radius:10px; padding:11px 12px; font-size:16px; font-family:inherit; }
+  #cores { display:flex; flex-wrap:wrap; gap:10px; margin-top:4px; }
+  #cores button { width:36px; height:36px; border-radius:50%; border:3px solid transparent; padding:0; }
+  #cores button.sel { border-color:var(--text); }
+  #euCard .acoes { display:flex; gap:10px; margin-top:18px; }
+  #euCard .acoes button { flex:1; background:#3a4450; color:var(--text); border:1px solid #2b333c; border-radius:10px; padding:11px; font-size:15px; }
+
   @media (max-width:600px) { #side { width:120px; } #side .sub { display:none; } .msg .head { font-size:12px; } }
 </style>
 </head>
@@ -51,8 +78,26 @@
     <div id="side"></div>
     <div id="chat"><div id="empty">Aguardando mensagens...</div></div>
   </div>
+  <div id="compose">
+    <button id="eu" title="Meu nome e minha cor"></button>
+    <input id="texto" type="text" placeholder="Escrever para o palco..." maxlength="500"
+           autocomplete="off" autocorrect="on" enterkeyhint="send">
+    <button id="enviar">Enviar</button>
+  </div>
+  <div id="soleitura">Somente leitura. Leia o QR Code no Receiver para poder escrever.</div>
 </div>
 <div id="flash"></div>
+
+<div id="euPainel">
+  <div id="euCard">
+    <h2>QUEM EST&Aacute; ESCREVENDO</h2>
+    <label for="euNome">Nome</label>
+    <input id="euNome" type="text" maxlength="24" placeholder="ex.: Produ&ccedil;&atilde;o" autocomplete="off">
+    <label>Cor</label>
+    <div id="cores"></div>
+    <div class="acoes"><button id="euOk">Salvar</button></div>
+  </div>
+</div>
 <script>
 (function () {
   var entries = {}, order = [], participants = [], selected = '', flashOn = true, fontPx = 24, pulses = 0, pulseTimer = null;
@@ -119,6 +164,117 @@
   document.getElementById('btnMinus').onclick = function () { fontPx = Math.max(14, fontPx - 3); applyFont(); };
   document.getElementById('btnPlus').onclick = function () { fontPx = Math.min(72, fontPx + 3); applyFont(); };
   document.getElementById('btnClear').onclick = function () { fetch('/clear', { method: 'POST' }); };
+
+  /* ======================================================================
+     Escrever daqui.
+
+     O codigo de escrita chega no endereco do QR Code (?k=XXXXXXXX). Quem
+     apontou a camera entra escrevendo; quem so descobriu o endereco ve a
+     conversa e nada mais. O codigo fica guardado neste aparelho para a
+     pessoa nao precisar ler o QR de novo a cada vez.
+
+     Nome e cor sao deste aparelho e so dele -- nao ha cadastro em lugar
+     nenhum. Um tecnico novo chega, le o QR, poe o nome e ja escreve.
+     ====================================================================== */
+  var CORES = ['3ddc84','4fc3f7','ffb74d','f06292','ba68c8','aed581','ff8a65','4dd0e1','fff176','90a4ae'];
+
+  function guarda (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function le (k, padrao) { try { var v = localStorage.getItem(k); return v === null ? padrao : v; } catch (e) { return padrao; } }
+
+  var token = '';
+  try {
+    var m = /[?&]k=([A-Za-z0-9]+)/.exec(location.search);
+    if (m) { token = m[1]; guarda('tl.k', token); history.replaceState(null, '', location.pathname); }
+    else { token = le('tl.k', ''); }
+  } catch (e) {}
+
+  // Um id por aparelho, sorteado uma vez. E o que da a cada celular uma
+  // linha propria na barra de participantes em vez de todos virarem um so.
+  var meuId = le('tl.id', '');
+  if (!meuId) {
+    meuId = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    guarda('tl.id', meuId);
+  }
+
+  var meuNome = le('tl.nome', '');
+  var minhaCor = le('tl.cor', CORES[Math.abs(meuId.charCodeAt(1) || 0) % CORES.length]);
+
+  var compose = document.getElementById('compose');
+  var soLeitura = document.getElementById('soleitura');
+  var campoTexto = document.getElementById('texto');
+  var btnEnviar = document.getElementById('enviar');
+  var btnEu = document.getElementById('eu');
+  var painel = document.getElementById('euPainel');
+  var campoNome = document.getElementById('euNome');
+  var divCores = document.getElementById('cores');
+
+  function pintaEu () {
+    btnEu.style.background = '#' + minhaCor;
+    btnEu.title = meuNome || 'Toque para pôr seu nome';
+    campoTexto.placeholder = meuNome ? ('Escrever como ' + meuNome + '...') : 'Escrever para o palco...';
+  }
+
+  function modoEscrita (podeEscrever) {
+    compose.className = podeEscrever ? 'ativo' : '';
+    soLeitura.className = podeEscrever ? '' : 'ativo';
+  }
+
+  CORES.forEach(function (c) {
+    var b = document.createElement('button');
+    b.style.background = '#' + c;
+    b.onclick = function () {
+      minhaCor = c;
+      Array.prototype.forEach.call(divCores.children, function (x) { x.className = ''; });
+      b.className = 'sel';
+    };
+    if (c === minhaCor) b.className = 'sel';
+    divCores.appendChild(b);
+  });
+
+  function abrePainel () { campoNome.value = meuNome; painel.className = 'ativo'; campoNome.focus(); }
+  function fechaPainel () {
+    meuNome = campoNome.value.trim().slice(0, 24);
+    guarda('tl.nome', meuNome); guarda('tl.cor', minhaCor);
+    painel.className = ''; pintaEu();
+  }
+  btnEu.onclick = abrePainel;
+  document.getElementById('euOk').onclick = fechaPainel;
+  painel.onclick = function (e) { if (e.target === painel) fechaPainel(); };
+
+  function enviar () {
+    var txt = campoTexto.value.trim();
+    if (!txt) return;
+
+    // Sem nome a mensagem chega como "Celular" e ninguem sabe quem falou.
+    if (!meuNome) { abrePainel(); return; }
+
+    btnEnviar.disabled = true;
+    fetch('/say', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ k: token, id: meuId, name: meuNome, color: minhaCor, text: txt, imp: 1 })
+    }).then(function (r) {
+      btnEnviar.disabled = false;
+      if (r.ok) { campoTexto.value = ''; campoTexto.focus(); return; }
+      if (r.status === 403) {
+        // Ou a chave geral foi desligada no Receiver, ou o codigo foi
+        // trocado. Nos dois casos este aparelho precisa ler o QR de novo.
+        modoEscrita(false);
+        soLeitura.textContent = 'Escrita bloqueada. Leia o QR Code de novo no Receiver.';
+      } else {
+        status.textContent = 'não consegui enviar — tente de novo';
+      }
+    }).catch(function () {
+      btnEnviar.disabled = false;
+      status.textContent = 'sem conexão para enviar';
+    });
+  }
+
+  btnEnviar.onclick = enviar;
+  campoTexto.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); enviar(); } });
+
+  pintaEu();
+  modoEscrita(!!token);
 
   function clearAll () { entries = {}; order = []; renderChat(); }
 

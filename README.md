@@ -257,6 +257,29 @@ Invoke-WebRequest https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml
 
 ---
 
+## Escrever pelo celular
+
+Quem lê o QR Code do Receiver abre a página do Display no celular **e pode digitar ali**. A mensagem
+aparece no telão como qualquer outra, com nome e cor próprios. Serve para a produção falar com o
+palco quando não há microfone de comunicação à mão.
+
+- **Nome e cor** ficam no próprio aparelho. Não há cadastro: a pessoa lê o QR, toca na bolinha de
+  cor, põe o nome e já escreve. Cada aparelho vira um participante separado na barra lateral.
+- **Quem pode escrever** — o QR carrega um código de 8 caracteres. Quem aponta a câmera entra
+  escrevendo; quem só descobriu o endereço na rede vê a conversa mas não escreve. Isso importa
+  porque qualquer pessoa no Wi-Fi do local alcança o servidor.
+- **Chave geral** — no painel do QR há "Celulares podem escrever". Desligada, ninguém escreve, nem
+  quem já leu o QR. Fica salva entre sessões.
+- **Trocar código** — sorteia um código novo e derruba os aparelhos que já tinham entrado. Serve
+  para cortar o acesso de alguém sem desligar a função para todos.
+- O botão "Copiar endereço" copia **sem** o código, de propósito: o endereço colado num grupo de
+  WhatsApp não deve dar permissão de escrever junto.
+
+**Display em outra máquina:** o QR do Receiver abre a página só para leitura. O código de escrita
+mora na máquina que serve a página e só é entregue a quem pergunta de `127.0.0.1` — então use o QR
+do Receiver daquela máquina para liberar a escrita.
+
+
 ## 7. Licença e ativação
 
 O **Receiver** precisa de licença para transcrever; o **Display** e a página do celular são

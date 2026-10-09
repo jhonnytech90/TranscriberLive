@@ -41,7 +41,7 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
 {
     TL_TRACE ("--- editor: construindo ---");
     setLookAndFeel (&lnf);
-    setSize (680, 386);   // +34: linha dos termos do show
+    setSize (680, 352);
 
     addAndMakeVisible (logo);
 
@@ -101,23 +101,6 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
 
     networkButton.onClick = [this] { showNetwork(); };
     addAndMakeVisible (networkButton);
-
-    // ---- termos do show ----------------------------------------------------------
-    // O que mais melhora nome proprio. O whisper acerta "retorno" e "volume"
-    // sozinho; "Micael" e "Lucilene" ele so acerta se souber que existem.
-    termosLabel.setText ("Termos", juce::dontSendNotification);
-    termosEditor.setMultiLine (false);
-    termosEditor.setTextToShowWhenEmpty (
-        juce::String (juce::CharPointer_UTF8 (
-            "nomes da banda e das m\xc3\xbasicas, separados por v\xc3\xadrgula")), tl::col::dim);
-    termosEditor.setTooltip (juce::String (juce::CharPointer_UTF8 (
-        "Nomes que v\xc3\xa3o ser ditos neste show. Ajuda o reconhecimento de nome pr\xc3\xb3prio. "
-        "Curto e melhor que longo: lista grande faz o modelo inventar nome que ningu\xc3\xa9m falou.")));
-    termosEditor.setText (processor.getTermosDoShow(), juce::dontSendNotification);
-    termosEditor.onFocusLost = [this] { processor.setTermosDoShow (termosEditor.getText().trim()); };
-    termosEditor.onReturnKey = [this] { processor.setTermosDoShow (termosEditor.getText().trim()); };
-    addAndMakeVisible (termosLabel);
-    addAndMakeVisible (termosEditor);
 
     qrButton.onClick = [this] { showQr(); };
     qrButton.setTooltip (juce::String (juce::CharPointer_UTF8 (
@@ -270,13 +253,6 @@ void TranscriberLiveAudioProcessorEditor::resized()
     modelLabel.setBounds (row2.removeFromLeft (52));
     modelBox.setBounds (row2.reduced (0, 2));
 
-    r.removeFromTop (6);
-
-    // linha 2b: termos do show
-    auto row2b = r.removeFromTop (28);
-    termosLabel.setBounds (row2b.removeFromLeft (52));
-    termosEditor.setBounds (row2b.reduced (0, 2));
-
     r.removeFromTop (10);
 
     // linha 3: medidor + FALA
@@ -308,7 +284,7 @@ void TranscriberLiveAudioProcessorEditor::setControlsVisible (bool v)
 {
     for (auto* c : std::initializer_list<juce::Component*> {
              &nameLabel, &nameEditor, &colourButton, &importanceLabel, &importanceBox, &flashButton,
-             &networkButton, &qrButton, &modelLabel, &modelBox, &termosLabel, &termosEditor, &meter, &speechLabel,
+             &networkButton, &qrButton, &modelLabel, &modelBox, &meter, &speechLabel,
              &gateSlider, &vadSlider, &holdSlider, &gateLabel, &vadLabel, &holdLabel,
              &partialsButton, &lastLineLabel })
         c->setVisible (v);
@@ -499,7 +475,20 @@ juce::String TranscriberLiveAudioProcessorEditor::urlDoDisplay() const
     if (ips.isEmpty())
         return {};
 
-    return "http://" + ips[0] + ":" + juce::String (processor.hub->getHttpPort()) + "/";
+    juce::String url = "http://" + ips[0] + ":" + juce::String (processor.hub->getHttpPort()) + "/";
+
+    // O codigo de escrita viaja DENTRO do QR. E o que separa quem apontou a
+    // camera de quem so descobriu o endereco na rede: o primeiro escreve, o
+    // segundo le. Nao atrapalha ninguem, porque ler o QR ja e o caminho
+    // normal de abrir a pagina.
+    //
+    // So entra quando a pagina e desta maquina. Com o Display em outra
+    // maquina nao temos como saber o codigo de la -- /token so responde a
+    // 127.0.0.1, de proposito -- e o painel explica isso.
+    if (const auto k = processor.hub->getTokenEscrita(); k.isNotEmpty())
+        url << "?k=" << k;
+
+    return url;
 }
 
 void TranscriberLiveAudioProcessorEditor::showQr()
@@ -508,10 +497,13 @@ void TranscriberLiveAudioProcessorEditor::showQr()
 
     struct Panel : juce::Component
     {
-        juce::Label      titulo, endereco, aviso;
-        juce::TextButton copiar { "Copiar endere" + juce::String (juce::CharPointer_UTF8 ("\xc3\xa7" "o")) };
-        tl::QrCode       qr;
-        bool             temQr = false;
+        juce::Label        titulo, endereco, aviso;
+        juce::TextButton   copiar { "Copiar endere" + juce::String (juce::CharPointer_UTF8 ("\xc3\xa7" "o")) };
+        juce::ToggleButton escrever { juce::String (juce::CharPointer_UTF8 (
+                               "Celulares podem escrever")) };
+        juce::TextButton   novoCodigo { juce::String (juce::CharPointer_UTF8 ("Trocar c\xc3\xb3" "digo")) };
+        tl::QrCode         qr;
+        bool               temQr = false;
 
         void paint (juce::Graphics& g) override
         {
@@ -532,16 +524,21 @@ void TranscriberLiveAudioProcessorEditor::showQr()
             areaQr = r.removeFromTop (190);
             r.removeFromTop (8);
             endereco.setBounds (r.removeFromTop (20));
-            aviso.setBounds (r.removeFromTop (32));
-            r.removeFromTop (6);
-            copiar.setBounds (r.removeFromTop (26));
+            aviso.setBounds (r.removeFromTop (44));
+            r.removeFromTop (4);
+            escrever.setBounds (r.removeFromTop (24));
+            r.removeFromTop (4);
+            auto linha = r.removeFromTop (26);
+            copiar.setBounds (linha.removeFromLeft (linha.getWidth() / 2 - 3));
+            novoCodigo.setBounds (linha.removeFromRight (linha.getWidth() - 6));
         }
     };
 
     auto panel = std::make_unique<Panel>();
     auto* p = panel.get();
 
-    for (auto* c : std::initializer_list<juce::Component*> { &p->titulo, &p->endereco, &p->aviso, &p->copiar })
+    for (auto* c : std::initializer_list<juce::Component*> { &p->titulo, &p->endereco, &p->aviso,
+                                                            &p->copiar, &p->escrever, &p->novoCodigo })
         p->addAndMakeVisible (c);
 
     p->titulo.setJustificationType (juce::Justification::centred);
@@ -550,7 +547,38 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     p->aviso.setJustificationType (juce::Justification::centredTop);
     p->aviso.setFont (juce::FontOptions (11.0f));
     p->aviso.setColour (juce::Label::textColourId, tl::col::dim);
-    p->setSize (260, 320);
+    p->setSize (270, 390);
+
+    // ---- chave geral da escrita --------------------------------------------
+    // Fica aqui, junto do QR, porque e a mesma decisao: quem pode escrever no
+    // telao. Desligada, nem quem leu o QR escreve.
+    p->escrever.setToggleState (processor.hub->isEscritaPermitida(), juce::dontSendNotification);
+    p->escrever.setTooltip (juce::String (juce::CharPointer_UTF8 (
+        "Desligado, ningu\xc3\xa9m escreve pelo celular, nem quem j\xc3\xa1 leu o QR.")));
+
+    p->novoCodigo.setTooltip (juce::String (juce::CharPointer_UTF8 (
+        "Sorteia um c\xc3\xb3" "digo novo: os aparelhos que j\xc3\xa1 entraram param de "
+        "escrever at\xc3\xa9 lerem o QR de novo. Serve para cortar o acesso de algu\xc3\xa9m "
+        "sem desligar a fun\xc3\xa7\xc3\xa3o para todos.")));
+
+    juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> safeQr (this);
+
+    p->escrever.onClick = [safeQr, p]
+    {
+        if (safeQr == nullptr) return;
+        safeQr->processor.hub->setEscritaPermitida (p->escrever.getToggleState());
+    };
+
+    p->novoCodigo.onClick = [safeQr, p]
+    {
+        if (safeQr == nullptr) return;
+        safeQr->processor.hub->trocarTokenEscrita();
+
+        // Redesenha com o codigo novo: o QR antigo ficou invalido no instante
+        // do clique, e deixar ele na tela so faria o tecnico tentar duas vezes.
+        if (auto* box = p->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
+        safeQr->showQr();
+    };
 
     if (url.isEmpty())
     {
@@ -577,19 +605,34 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     {
         p->temQr = true;
         const auto id = processor.getIdentity();
+        const bool temCodigo = url.contains ("?k=");
+
         p->titulo.setText (juce::String (juce::CharPointer_UTF8 (
             "Aponte a c\xc3\xa2mera do celular")), juce::dontSendNotification);
-        p->endereco.setText (url, juce::dontSendNotification);
-        p->aviso.setText (id.remoteHost.isNotEmpty()
-            ? juce::String (juce::CharPointer_UTF8 (
-                "Display em outra m\xc3\xa1quina, porta web padr\xc3\xa3o. "
-                "Celular e Display na mesma rede."))
-            : juce::String (juce::CharPointer_UTF8 (
-                "Celular e computador precisam estar na mesma rede Wi-Fi.")),
+
+        // O endereco mostrado sai sem o codigo. Ele serve para quem vai
+        // digitar a mao, e quem digita a mao entra so para ler -- o codigo
+        // tem 8 caracteres e ditar isso no meio de um show nao funciona.
+        p->endereco.setText (url.upToFirstOccurrenceOf ("?", false, false), juce::dontSendNotification);
+
+        p->aviso.setText (
+            id.remoteHost.isNotEmpty()
+                ? juce::String (juce::CharPointer_UTF8 (
+                    "Display em outra m\xc3\xa1quina: aqui o QR abre s\xc3\xb3 para leitura. "
+                    "Para escrever, use o QR do Receiver daquela m\xc3\xa1quina."))
+            : temCodigo
+                ? juce::String (juce::CharPointer_UTF8 (
+                    "Quem ler o QR pode escrever no tel\xc3\xa3o. Quem s\xc3\xb3 digitar o "
+                    "endere\xc3\xa7o v\xc3\xaa a conversa, mas n\xc3\xa3o escreve."))
+                : juce::String (juce::CharPointer_UTF8 (
+                    "Ainda n\xc3\xa3o peguei o c\xc3\xb3" "digo de escrita do Display. "
+                    "Abra de novo em alguns segundos.")),
             juce::dontSendNotification);
     }
 
-    p->copiar.onClick = [url] { juce::SystemClipboard::copyTextToClipboard (url); };
+    // Copia SEM o codigo: o endereco colado no WhatsApp da produ\xc3\xa7\xc3\xa3o nao
+    // deve carregar a permissao de escrever junto.
+    p->copiar.onClick = [url] { juce::SystemClipboard::copyTextToClipboard (url.upToFirstOccurrenceOf ("?", false, false)); };
 
     juce::CallOutBox::launchAsynchronously (std::move (panel), qrButton.getScreenBounds(), nullptr);
 }

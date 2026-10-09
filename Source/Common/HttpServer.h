@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 #include "MessageStore.h"
 #include "SocketSafety.h"
+#include "Log.h"
 
 namespace tl
 {
@@ -14,12 +15,59 @@ namespace tl
           GET  /state    JSON com participantes + histórico
           GET  /events   Server-Sent Events: msg / clear / flash / participants
           POST /clear    limpa o histórico
+          POST /say      mensagem digitada num celular/tablet
+          GET  /token    o código de escrita — SÓ para quem chama de 127.0.0.1
+
+        Sobre /token e o código de escrita
+        ----------------------------------
+        Qualquer pessoa no Wi-Fi do local alcança este servidor. Sem nenhuma
+        barreira, qualquer uma delas escreveria no telão do cantor no meio do
+        show. O código resolve isso sem atrapalhar ninguém: ele vai dentro do
+        QR Code, então quem aponta a câmera já entra podendo escrever, e quem
+        só descobriu o endereço vê a conversa mas não escreve.
+
+        /token existe porque quem desenha o QR é o Receiver, que pode estar
+        em OUTRO processo na mesma máquina (o app do Display costuma ser o
+        primário). Ele responde só para 127.0.0.1: um processo da mesma
+        máquina lê o código, um celular na rede não. Se /token respondesse a
+        qualquer um, o código não valeria nada.
     */
     class HttpServer : private juce::Thread
     {
     public:
         HttpServer (MessageStore& s, const char* html, int htmlSize)
-            : juce::Thread ("TranscriberLive HTTP"), store (s), pageHtml (html), pageHtmlSize (htmlSize) {}
+            : juce::Thread ("TranscriberLive HTTP"), store (s), pageHtml (html), pageHtmlSize (htmlSize)
+        {
+            sortearToken();
+        }
+
+        //-- escrita pelos celulares -------------------------------------------------
+        /** Chave geral. Desligada, nem o código do QR deixa escrever. */
+        void setEscritaPermitida (bool p) noexcept
+        {
+            if (escritaPermitida.exchange (p) != p)
+                TL_LOGI ("web", juce::String ("escrita pelos celulares: ") + (p ? "LIGADA" : "desligada"));
+        }
+        bool isEscritaPermitida() const noexcept   { return escritaPermitida.load(); }
+
+        juce::String getToken() const { const juce::ScopedLock sl (tokenLock); return token; }
+
+        /** Novo código: invalida os aparelhos que já tinham entrado. Serve
+            para cortar o acesso de alguém sem desligar a função para todos. */
+        void sortearToken()
+        {
+            const juce::ScopedLock sl (tokenLock);
+            auto& r = juce::Random::getSystemRandom();
+            token.clear();
+
+            // Sem vogais e sem 0/O/1/I/l: o código as vezes e lido em voz alta
+            // ou digitado a mao, e esses caracteres se confundem.
+            static const char* alfabeto = "23456789BCDFGHJKLMNPQRSTVWXZ";
+            const int n = (int) strlen (alfabeto);
+
+            for (int i = 0; i < 8; ++i)
+                token << alfabeto[r.nextInt (n)];
+        }
 
         ~HttpServer() override { stop(); }
 
@@ -116,6 +164,8 @@ namespace tl
                 if (path == "/events")            serveEvents();
                 else if (path == "/state")        sendResponse ("200 OK", "application/json; charset=utf-8", stateJson());
                 else if (path == "/clear" && method == "POST") { server.store.clear(); sendResponse ("200 OK", "text/plain", "ok"); }
+                else if (path == "/say"   && method == "POST") atenderSay (lerCorpo (request, deadline));
+                else if (path == "/token")                     atenderToken (method, lerCorpo (request, deadline));
                 else if (path == "/" || path == "/index.html")
                     sendResponse ("200 OK", "text/html; charset=utf-8", juce::String::fromUTF8 (server.pageHtml, server.pageHtmlSize));
                 else
@@ -128,6 +178,142 @@ namespace tl
             bool isFinished() const noexcept { return finished.load(); }
 
         private:
+            /** O laco de cima para no fim dos CABECALHOS. Para um POST ainda
+                falta o corpo: le mais ate completar o Content-Length. Sem
+                isto o JSON chegaria cortado -- ou vazio, se o celular mandar
+                cabecalhos e corpo em pacotes separados, que e o normal. */
+            juce::String lerCorpo (const juce::String& request, juce::uint32 deadline)
+            {
+                const auto cabecalhos = request.upToFirstOccurrenceOf ("\r\n\r\n", false, false);
+                auto corpo = request.fromFirstOccurrenceOf ("\r\n\r\n", false, false);
+
+                int esperado = 0;
+                for (auto& linha : juce::StringArray::fromLines (cabecalhos))
+                    if (linha.startsWithIgnoreCase ("content-length:"))
+                        esperado = linha.fromFirstOccurrenceOf (":", false, false).trim().getIntValue();
+
+                // Teto: o corpo e uma frase digitada no celular, nunca um
+                // arquivo. Sem teto, uma requisicao mentindo no Content-Length
+                // prenderia esta thread ate o tempo acabar.
+                if (esperado <= 0 || esperado > 8192)
+                    return corpo;
+
+                char buf[2048];
+                while ((int) corpo.getNumBytesAsUTF8() < esperado
+                       && juce::Time::getMillisecondCounter() < deadline
+                       && ! threadShouldExit())
+                {
+                    if (socket->waitUntilReady (true, 200) != 1) continue;
+                    const int n = socket->read (buf, (int) sizeof (buf) - 1, false);
+                    if (n <= 0) break;
+                    buf[n] = 0;
+                    corpo += juce::String::fromUTF8 (buf, n);
+                }
+
+                return corpo;
+            }
+
+            /** So para quem chama da propria maquina. O Receiver precisa do
+                codigo para desenhar o QR; um celular na rede nao pode te-lo
+                de graca, senao o codigo nao protege nada. */
+            void atenderToken (const juce::String& method, const juce::String& corpo)
+            {
+                const auto quem = socket->getHostName();
+
+                if (quem != "127.0.0.1" && quem != "::1" && quem != "localhost")
+                {
+                    TL_LOGW ("web", "pedido de /token recusado, veio de " + quem);
+                    sendResponse ("403 Forbidden", "text/plain", "nao");
+                    return;
+                }
+
+                // POST: o Receiver manda a chave geral e pede codigo novo.
+                // Mesma porta de entrada do GET, e pela mesma razao: so a
+                // propria maquina pode mexer nisto.
+                if (method == "POST")
+                {
+                    if (auto* in = juce::JSON::parse (corpo).getDynamicObject())
+                    {
+                        if (in->hasProperty ("escrita"))
+                            server.setEscritaPermitida ((bool) in->getProperty ("escrita"));
+
+                        if ((bool) in->getProperty ("novo"))
+                            server.sortearToken();
+                    }
+                }
+
+                auto* o = new juce::DynamicObject();
+                o->setProperty ("token", server.getToken());
+                o->setProperty ("escrita", server.isEscritaPermitida());
+                sendResponse ("200 OK", "application/json; charset=utf-8",
+                              juce::JSON::toString (juce::var (o), true));
+            }
+
+            void atenderSay (const juce::String& corpo)
+            {
+                if (! server.isEscritaPermitida())
+                {
+                    sendResponse ("403 Forbidden", "text/plain", "escrita desligada no Receiver");
+                    return;
+                }
+
+                auto v = juce::JSON::parse (corpo);
+                auto* o = v.getDynamicObject();
+
+                if (o == nullptr)
+                {
+                    sendResponse ("400 Bad Request", "text/plain", "json invalido");
+                    return;
+                }
+
+                if (o->getProperty ("k").toString() != server.getToken())
+                {
+                    TL_LOGW ("web", "mensagem recusada: codigo de escrita errado (de "
+                                    + socket->getHostName() + ")");
+                    sendResponse ("403 Forbidden", "text/plain", "codigo invalido");
+                    return;
+                }
+
+                const auto texto = o->getProperty ("text").toString().trim();
+
+                if (texto.isEmpty())
+                {
+                    sendResponse ("400 Bad Request", "text/plain", "texto vazio");
+                    return;
+                }
+
+                Message m;
+                m.type   = "msg";
+
+                // O id vem do aparelho e leva prefixo "web-": e o que separa
+                // um celular de um canal de audio na barra de participantes,
+                // e o que impede um aparelho de se passar por um Receiver.
+                const auto id = o->getProperty ("id").toString().retainCharacters (
+                    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-");
+
+                m.channelId   = "web-" + (id.isNotEmpty() ? id.substring (0, 36) : juce::String ("anonimo"));
+                m.name        = o->getProperty ("name").toString().trim().substring (0, 24);
+                if (m.name.isEmpty()) m.name = "Celular";
+
+                m.colour      = juce::Colour::fromString ("ff" + o->getProperty ("color").toString()
+                                                                  .retainCharacters ("0123456789abcdefABCDEF")
+                                                                  .paddedLeft ('0', 6).substring (0, 6));
+                m.importance  = juce::jlimit (1, 3, (int) o->getProperty ("imp"));
+                m.flash       = true;
+
+                // Cada envio e uma fala fechada: id unico, para o Display nao
+                // tratar a proxima mensagem como correcao desta.
+                m.utteranceId = juce::Uuid().toDashedString();
+                m.text        = texto.substring (0, 500);
+                m.isFinal     = true;
+                m.timeMs      = juce::Time::currentTimeMillis();
+
+                server.store.handle (m);
+                TL_LOGI ("web", "mensagem de " + m.name + ": " + m.text);
+
+                sendResponse ("200 OK", "text/plain", "ok");
+            }
+
             juce::String stateJson() const
             {
                 auto* o = new juce::DynamicObject();
@@ -251,6 +437,12 @@ namespace tl
         mutable juce::CriticalSection connLock;
         juce::OwnedArray<Connection> connections;
         std::atomic<bool> running { false };
+
+        // O codigo de escrita fica atras de lock porque sortearToken() pode
+        // ser chamado da UI enquanto uma thread de conexao esta validando.
+        mutable juce::CriticalSection tokenLock;
+        juce::String      token;
+        std::atomic<bool> escritaPermitida { true };
         int boundPort = 0;
     };
 }

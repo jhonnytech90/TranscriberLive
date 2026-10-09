@@ -321,7 +321,7 @@ if(TRANSCRIBER_BUILD_TESTS)
     target_sources(VocabQrTest PRIVATE Tests/VocabQrTest.cpp Source/Common/Vocabulario.cpp Source/Common/QrCode.cpp Source/Common/Log.cpp)
     target_include_directories(VocabQrTest PRIVATE Source)
     target_compile_definitions(VocabQrTest PRIVATE ${TL_COMMON_DEFS})
-    target_link_libraries(VocabQrTest PRIVATE TranscriberDisplayData juce::juce_graphics juce::juce_events juce::juce_core
+    target_link_libraries(VocabQrTest PRIVATE TranscriberDisplayData juce::juce_graphics juce::juce_events juce::juce_core juce::juce_cryptography
         PUBLIC juce::juce_recommended_config_flags)
 
     juce_add_gui_app(ReceiverTest PRODUCT_NAME "ReceiverTest")

@@ -109,57 +109,9 @@ void Vocabulario::parse (const juce::String& conteudo)
 }
 
 //==============================================================================
-void Vocabulario::setTermosDoShow (const juce::String& t)
+juce::String Vocabulario::montarPrompt() const
 {
-    const juce::ScopedLock sl (termosLock);
-
-    if (termosTexto == t)
-        return;
-
-    termosTexto = t;
-    termos.clear();
-    termosNorm.clear();
-
-    // Quebra em palavras: o tecnico digita "Micael, Lucilene, Os Faceiros" e
-    // na fala essas palavras aparecem soltas, nunca na mesma ordem.
-    for (auto& palavra : juce::StringArray::fromTokens (t, " ,;/\t\n", ""))
-    {
-        const auto p = palavra.trim();
-        const auto norm = normalizar (p);
-
-        // 4 letras e o piso: abaixo disso ("Ana", "Zé") qualquer palavra da
-        // frase fica a uma letra de distancia e a troca vira chute.
-        if (norm.length() < 4 || termosNorm.contains (norm))
-            continue;
-
-        termos.add (p);
-        termosNorm.add (norm);
-    }
-
-    TL_LOGI ("vocab", juce::String::formatted (
-        "termos do show: %d palavra(s) para correcao por aproximacao", termos.size()));
-}
-
-//==============================================================================
-juce::String Vocabulario::montarPrompt (const juce::String& termosDoShow) const
-{
-    juce::String p = linhasPrompt.joinIntoString (" ").trim();
-
-    // Os termos do show vão POR ÚLTIMO de propósito: quando o prompt passa de
-    // 224 tokens o whisper joga fora o começo e guarda o fim. Então o que o
-    // técnico digitou -- os nomes que realmente vão ser ditos neste show -- é
-    // o que sempre sobrevive.
-    const auto termos = termosDoShow.trim();
-    if (termos.isNotEmpty())
-    {
-        if (p.isNotEmpty() && ! p.endsWithChar ('.'))
-            p << ".";
-        p << " No palco de hoje: " << termos;
-        if (! p.endsWithChar ('.'))
-            p << ".";
-    }
-
-    return p;
+    return linhasPrompt.joinIntoString (" ").trim();
 }
 
 //==============================================================================
@@ -223,17 +175,7 @@ int Vocabulario::distancia (const juce::String& a, const juce::String& b, int te
 //==============================================================================
 juce::String Vocabulario::corrigir (const juce::String& texto) const
 {
-    if (texto.isEmpty())
-        return texto;
-
-    juce::StringArray termosLocal, termosNormLocal;
-    {
-        const juce::ScopedLock sl (termosLock);
-        termosLocal     = termos;
-        termosNormLocal = termosNorm;
-    }
-
-    if (acentos.isEmpty() && termosLocal.isEmpty())
+    if (texto.isEmpty() || acentos.isEmpty())
         return texto;
 
     juce::String saida;
@@ -242,64 +184,30 @@ juce::String Vocabulario::corrigir (const juce::String& texto) const
     juce::String palavra;
     int trocas = 0;
 
-    /** Aplica a grafia `certa` preservando a maiuscula que veio da frase --
-        inicio de frase nao pode virar minuscula so porque o vocabulario
-        guarda a palavra em caixa baixa. */
-    auto comCaixaDaFrase = [] (const juce::String& original, const juce::String& certa)
-    {
-        const bool originalMaiusculo = juce::CharacterFunctions::isUpperCase (original[0]);
-        const bool certaMinuscula    = juce::CharacterFunctions::isLowerCase (certa[0]);
-
-        if (originalMaiusculo && certaMinuscula)
-            return certa.substring (0, 1).toUpperCase() + certa.substring (1);
-
-        return certa;
-    };
-
     auto despejar = [&]
     {
         if (palavra.isEmpty())
-        {
             return;
-        }
 
         const auto norm = normalizar (palavra);
 
-        // Palavra curta nao se mexe: tem vizinho demais.
+        // 4 letras e o piso: abaixo disso nao vale o risco nem o trabalho.
         if (norm.length() >= 4)
         {
-            // ---- regra 1: acento -------------------------------------------
-            // Mesmas letras, grafia diferente. Sem risco: nao muda a palavra.
-            const int iAcento = acentosNorm.indexOf (norm);
+            const int i = acentosNorm.indexOf (norm);
 
-            if (iAcento >= 0)
+            if (i >= 0)
             {
-                const auto certa = comCaixaDaFrase (palavra, acentos[iAcento]);
+                auto certa = acentos[i];
+
+                // Preserva a maiuscula que veio da frase: inicio de frase nao
+                // pode virar minuscula so porque a lista guarda a palavra em
+                // caixa baixa.
+                if (juce::CharacterFunctions::isUpperCase (palavra[0])
+                    && juce::CharacterFunctions::isLowerCase (certa[0]))
+                    certa = certa.substring (0, 1).toUpperCase() + certa.substring (1);
+
                 if (certa != palavra) { palavra = certa; ++trocas; }
-            }
-            else if (norm.length() >= 5 && ! termosNormLocal.isEmpty())
-            {
-                // ---- regra 2: aproximacao, SO contra os termos do show -----
-                const int teto = (norm.length() >= 8) ? 2 : 1;
-                int melhor = teto + 1, idx = -1, empates = 0;
-
-                for (int i = 0; i < termosNormLocal.size(); ++i)
-                {
-                    const int d = distancia (norm, termosNormLocal[i], teto);
-                    if (d > teto)         continue;
-                    if (d == 0)         { idx = -1; empates = 2; break; }   // ja esta certa
-                    if (d < melhor)     { melhor = d; idx = i; empates = 1; }
-                    else if (d == melhor) ++empates;
-                }
-
-                // Empate = ambiguo. Dois termos igualmente proximos querem
-                // dizer que nao da para saber qual foi dito, e chutar errado
-                // no telao e pior que deixar o texto cru.
-                if (idx >= 0 && empates == 1)
-                {
-                    palavra = termosLocal[idx];
-                    ++trocas;
-                }
             }
         }
 
@@ -320,7 +228,7 @@ juce::String Vocabulario::corrigir (const juce::String& texto) const
     despejar();
 
     if (trocas > 0)
-        TL_LOGD ("vocab", juce::String::formatted ("%d palavra(s) ajustada(s)", trocas));
+        TL_LOGD ("vocab", juce::String::formatted ("%d acento(s) reposto(s)", trocas));
 
     return saida;
 }
