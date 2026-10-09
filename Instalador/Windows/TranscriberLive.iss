@@ -167,6 +167,11 @@ var
   MdSha:     array[0..UltimoModelo] of String;
   MdRotulo:  array[0..UltimoModelo] of String;
 
+// Os rotulos abaixo sao os MESMOS nomes que aparecem na lista do plugin
+// (tl::modelos, em Source/Common/Modelos.h). Quem instala escolhendo
+// "Maxima precisao" tem que achar "Maxima precisao" na lista depois -- se os
+// dois textos discordarem, o tecnico fica procurando um modelo que ele acha
+// que nao instalou.
 procedure DefineModelos;
 var
   Base, Vad: String;
@@ -182,27 +187,27 @@ begin
   MdArquivo[1] := 'ggml-tiny.bin';
   MdUrl[1]     := Base + 'ggml-tiny.bin';
   MdSha[1]     := 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21';
-  MdRotulo[1]  := 'tiny - 74 MB - o mais leve, erra mais';
+  MdRotulo[1]  := 'Velocidade maxima - 74 MB - erra muito, so para teste';
 
   MdArquivo[2] := 'ggml-base.bin';
   MdUrl[2]     := Base + 'ggml-base.bin';
   MdSha[2]     := '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe';
-  MdRotulo[2]  := 'base - 141 MB - bom para PC modesto';
+  MdRotulo[2]  := 'Mais rapido - 141 MB - para PC modesto';
 
   MdArquivo[3] := 'ggml-small.bin';
   MdUrl[3]     := Base + 'ggml-small.bin';
   MdSha[3]     := '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b';
-  MdRotulo[3]  := 'small - 465 MB - RECOMENDADO para show';
+  MdRotulo[3]  := 'Equilibrado - 465 MB - RECOMENDADO para show';
 
   MdArquivo[4] := 'ggml-medium.bin';
   MdUrl[4]     := Base + 'ggml-medium.bin';
   MdSha[4]     := '6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208';
-  MdRotulo[4]  := 'medium - 1,4 GB - mais preciso, exige CPU boa';
+  MdRotulo[4]  := 'Melhor transcricao - 1,4 GB - exige CPU boa';
 
   MdArquivo[5] := 'ggml-large-v3-turbo.bin';
   MdUrl[5]     := Base + 'ggml-large-v3-turbo.bin';
   MdSha[5]     := '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69';
-  MdRotulo[5]  := 'large-v3-turbo - 1,5 GB - o melhor, so em maquina forte';
+  MdRotulo[5]  := 'Maxima precisao - 1,5 GB - o que mais acerta, exige PC forte';
 end;
 
 function JaInstalado(const Arquivo: String): Boolean;

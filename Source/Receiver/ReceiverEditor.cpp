@@ -158,11 +158,22 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     addChildComponent (licensePanel);
 
     // ---- modelo ------------------------------------------------------------------
+    // A lista mostra o que o modelo ENTREGA ("Maxima precisao"), nao o nome do
+    // arquivo. Entao a selecao vai pelo INDICE, e nao pelo texto: o texto
+    // visivel deixou de ser o nome do arquivo.
     modelBox.onChange = [this]
     {
-        const auto name = modelBox.getText();
-        if (name.isNotEmpty() && name != processor.getSelectedModel())
-            processor.selectModel (name);
+        const int i = modelBox.getSelectedItemIndex();
+
+        if (i >= 0 && i < lastModelList.size())
+        {
+            const auto arquivo = lastModelList[i];
+
+            if (arquivo != processor.getSelectedModel())
+                processor.selectModel (arquivo);
+
+            modelBox.setTooltip (tl::modelos::descricao (arquivo));
+        }
     };
     addAndMakeVisible (modelBox);
     { TL_TRACE_STEP ("editor: lista de modelos"); refreshModelList(); }
@@ -374,22 +385,39 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
 void TranscriberLiveAudioProcessorEditor::refreshModelList()
 {
     lastModelScan = juce::Time::getMillisecondCounter();
-    const auto models = processor.getAvailableModels();
+
+    auto models = processor.getAvailableModels();
     const auto selected = processor.getSelectedModel();
 
-    if (models != lastModelList || modelBox.getText() != selected)
+    // Do mais leve para o mais pesado. A ordem alfabetica dos arquivos
+    // ("base, large, medium, small, tiny") nao diz nada; esta diz.
+    std::stable_sort (models.strings.begin(), models.strings.end(),
+                      [] (const juce::String& a, const juce::String& b)
+                      { return tl::modelos::peso (a) < tl::modelos::peso (b); });
+
+    const int idxSelecionado = models.indexOf (selected);
+
+    if (models != lastModelList || modelBox.getSelectedItemIndex() != idxSelecionado)
     {
         lastModelList = models;
         modelBox.clear (juce::dontSendNotification);
+
         if (models.isEmpty())
         {
             modelBox.setTextWhenNothingSelected (utf8 ("nenhum ggml-*.bin em ") + tl::Hub::getModelsDir().getFullPathName());
+            modelBox.setTooltip ({});
         }
         else
         {
-            modelBox.addItemList (models, 1);
-            const int idx = models.indexOf (selected);
-            modelBox.setSelectedItemIndex (idx >= 0 ? idx : 0, juce::dontSendNotification);
+            juce::StringArray rotulos;
+            for (auto& m : models)
+                rotulos.add (tl::modelos::rotulo (m));
+
+            modelBox.addItemList (rotulos, 1);
+
+            const int idx = idxSelecionado >= 0 ? idxSelecionado : 0;
+            modelBox.setSelectedItemIndex (idx, juce::dontSendNotification);
+            modelBox.setTooltip (tl::modelos::descricao (models[idx]));
         }
     }
 }

@@ -277,14 +277,31 @@ jobs:
           baixar ggml-silero-v5.1.2.bin \
             "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin" \
             29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf
-          baixar ggml-small.bin \
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin" \
-            1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b
-          # base: para as maquinas que nao aguentam o small. ~3x mais rapido.
-          # O plugin escolhe sozinho qual usar e troca se nao acompanhar.
+          # ---------------------------------------------------------------
+          # Dois modelos, e so dois. Nao e economia de espaco: e o teto de
+          # 2 GiB por arquivo do GitHub Releases.
+          #
+          #   turbo 1,51 GiB + base 0,14 GiB + VAD + binarios = ~1,70 GiB  OK
+          #   ...com o small junto                            = ~2,15 GiB  ESTOURA
+          #
+          # Entre small e turbo o turbo ganha com folga no Apple Silicon (o
+          # Metal faz o encoder; o decoder dele tem 4 camadas no lugar de 32).
+          # E o small nunca serviu em Mac Intel -- medimos RTF ~4 num Air
+          # 2019, ou seja, 4 segundos de processamento por segundo de fala.
+          # Em Intel quem serve e o base. Entao small nao tem dono aqui.
+          # ---------------------------------------------------------------
+
+          # Apple Silicon: o que mais acerta sem perder o tempo real.
+          baixar ggml-large-v3-turbo.bin \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin" \
+            1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69
+
+          # Mac Intel e qualquer maquina que nao acompanhe. O plugin escolhe
+          # sozinho e desce para ca se a medicao do RTF mandar.
           baixar ggml-base.bin \
             "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin" \
             60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe
+
           ls -lh Instalador/modelos
 
       - name: Monta o instalador e o desinstalador
@@ -296,6 +313,29 @@ jobs:
                    Instalador/desinstalador/scripts/postinstall
           Instalador/montar-instalador.command "$PWD/Instalador/binarios" "$PWD/Instalador/modelos"
           ls -lh Instalador/saida
+
+      # -----------------------------------------------------------------------
+      # Trava de tamanho.
+      #
+      # O GitHub recusa anexo de Release acima de 2 GiB. Com o turbo embutido
+      # a margem ficou em ~300 MB, entao qualquer modelo a mais estoura -- e
+      # estouraria no passo do upload, depois de 20 minutos de build, com uma
+      # mensagem que nao explica nada. Aqui para na hora e diz o porque.
+      # -----------------------------------------------------------------------
+      - name: O instalador cabe na Release?
+        run: |
+          set -e
+          PKG=$(ls "$GITHUB_WORKSPACE/Instalador/saida/"TranscriberLive-*-macOS.pkg)
+          BYTES=$(stat -f%z "$PKG")
+          TETO=$((2 * 1024 * 1024 * 1024))
+
+          printf 'instalador: %s (%.2f GiB)\n' "$(basename "$PKG")" "$(echo "$BYTES/1073741824" | bc -l)"
+
+          if [ "$BYTES" -ge "$TETO" ]; then
+            echo "::error::o instalador passou de 2 GiB ($BYTES bytes) — o GitHub Releases vai recusar."
+            echo "::error::tire um modelo do passo 'Baixa os modelos' ou volte a baixar na instalacao."
+            exit 1
+          fi
 
       - name: Confere o que vai dentro do instalador
         run: |
@@ -310,10 +350,10 @@ jobs:
           for E in 'VST3/Transcriber Live Receiver.vst3' 'VST3/Transcriber Live Display.vst3' \
                    'Components/Transcriber Live Receiver.component' 'Components/Transcriber Live Display.component' \
                    'Applications/Transcriber Live Display.app' \
-                   'models/ggml-small.bin' 'models/ggml-base.bin' 'models/ggml-silero-v5.1.2.bin'; do
+                   'models/ggml-large-v3-turbo.bin' 'models/ggml-base.bin' 'models/ggml-silero-v5.1.2.bin'; do
             lsbom -s conf/base.pkg/Bom | grep -qF "$E" || { echo "::error::faltou no pacote: $E"; exit 1; }
           done
-          echo "Instalador completo: 4 plugins + app + 3 modelos (small, base, VAD)."
+          echo "Instalador completo: 4 plugins + app + 3 modelos (turbo, base, VAD)."
 
           # Nenhum bundle pode ser relocavel. Se for, o Installer do macOS
           # instala em cima de qualquer copia do mesmo bundle que exista no
@@ -333,7 +373,7 @@ jobs:
           set -e
           sudo installer -pkg "$GITHUB_WORKSPACE/Instalador/saida/"TranscriberLive-*-macOS.pkg -target /
           test -d "/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3"
-          test -f "/Library/Application Support/TranscriberLive/models/ggml-small.bin"
+          test -f "/Library/Application Support/TranscriberLive/models/ggml-large-v3-turbo.bin"
           # o app tem que abrir: binario presente E executavel
           APPBIN="/Applications/Transcriber Live Display.app/Contents/MacOS/Transcriber Live Display"
           test -x "$APPBIN" || { echo "::error::o app instalado nao esta executavel"; ls -l "$APPBIN"; exit 1; }
@@ -354,7 +394,7 @@ jobs:
           set -e
           gh release view macos-latest >/dev/null 2>&1 || \
             gh release create macos-latest --title "Transcriber Live — macOS (build mais recente)" \
-               --notes "Instalador e desinstalador do macOS, gerados automaticamente a cada build. Os modelos de voz ja vem embutidos: o cliente nao baixa nada." \
+               --notes "Instalador e desinstalador do macOS, gerados automaticamente a cada build. Os modelos de voz ja vem embutidos (Maxima precisao e Mais rapido): o cliente nao baixa nada." \
                --latest=false
           gh release upload macos-latest Instalador/saida/*.pkg --clobber
 

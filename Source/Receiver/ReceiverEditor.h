@@ -7,6 +7,7 @@
 #include "Common/Branding.h"
 #include "Common/LicenseComponent.h"
 #include "Common/QrCode.h"
+#include "Common/Modelos.h"
 
 //==============================================================================
 /** Medidor de nível com a linha do gate desenhada por cima. */

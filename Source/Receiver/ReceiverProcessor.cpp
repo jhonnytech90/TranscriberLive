@@ -1,5 +1,6 @@
 #include "ReceiverProcessor.h"
 #include "Common/Vocabulario.h"
+#include "Common/Modelos.h"
 #include "ReceiverEditor.h"
 #include "Common/Trace.h"
 #include "Common/Log.h"
@@ -123,10 +124,6 @@ juce::StringArray TranscriberLiveAudioProcessor::getAvailableModels() const
     return out;
 }
 
-// Do mais leve para o mais pesado. Serve tanto para escolher o padrao quanto
-// para saber para onde descer quando a maquina nao acompanha.
-static const char* const kModelosPorPeso[] = { "tiny", "base", "small", "medium", "turbo", "large" };
-
 /*  Por que NAO ha mais palpite por hardware aqui.
 
     Havia: "Apple Silicon ou 4+ nucleos fisicos leva small, o resto comeca no
@@ -149,21 +146,30 @@ juce::String TranscriberLiveAudioProcessor::escolherModeloMaisLeve (const juce::
     if (models.isEmpty())
         return {};
 
-    // posicao do atual na escala de peso
-    int pesoAtual = -1;
-    for (int i = 0; i < (int) juce::numElementsInArray (kModelosPorPeso); ++i)
-        if (atual.containsIgnoreCase (kModelosPorPeso[i])) { pesoAtual = i; break; }
+    // A escala de peso e a mesma da lista da interface (tl::modelos): uma
+    // tabela so, para a ordem que o tecnico ve e a ordem que o plugin usa
+    // para descer nunca discordarem.
+    const int pesoAtual = tl::modelos::peso (atual);
 
-    if (pesoAtual <= 0)
-        return {};   // desconhecido, ou ja e o mais leve
+    if (pesoAtual == 0 || pesoAtual == 99)
+        return {};   // ja e o mais leve, ou e um modelo que nao conhecemos
 
-    // o mais pesado que ainda seja mais leve que o atual
-    for (int i = pesoAtual - 1; i >= 0; --i)
-        for (auto& m : models)
-            if (m.containsIgnoreCase (kModelosPorPeso[i]))
-                return m;
+    // o mais pesado entre os que ainda sao mais leves que o atual
+    juce::String melhor;
+    int melhorPeso = -1;
 
-    return {};
+    for (auto& m : models)
+    {
+        const int p = tl::modelos::peso (m);
+
+        if (p < pesoAtual && p > melhorPeso)
+        {
+            melhorPeso = p;
+            melhor = m;
+        }
+    }
+
+    return melhor;
 }
 
 void TranscriberLiveAudioProcessor::autoSelectModel()
@@ -174,8 +180,23 @@ void TranscriberLiveAudioProcessor::autoSelectModel()
     const auto models = getAvailableModels();
     selectedModel.clear();
 
-    // preferencia por QUALIDADE; a medicao rebaixa depois, se precisar
-    for (auto* pref : { "small", "medium", "turbo", "large", "base", "tiny" })
+    /*  Preferencia por QUALIDADE; a medicao rebaixa depois, se precisar.
+
+        Em Apple Silicon o turbo vem primeiro, e isso nao e chute: o Metal faz
+        o encoder, que e a parte pesada, e o decoder do turbo tem 4 camadas no
+        lugar de 32. Na pratica ele reconhece perto do large e responde perto
+        do small -- e foi para isso que ele existe.
+
+        Em Mac Intel e no Windows a ordem antiga continua: ali nao ha Metal,
+        o encoder cai todo na CPU, e comecar no turbo so adiantaria o momento
+        em que o plugin precisa rebaixar sozinho.                             */
+   #if JUCE_MAC && (defined (__aarch64__) || defined (__arm64__))
+    const char* const preferencia[] = { "turbo", "medium", "small", "large", "base", "tiny" };
+   #else
+    const char* const preferencia[] = { "small", "medium", "turbo", "large", "base", "tiny" };
+   #endif
+
+    for (auto* pref : preferencia)
     {
         for (auto& m : models)
             if (m.containsIgnoreCase (pref)) { selectedModel = m; break; }
@@ -185,7 +206,8 @@ void TranscriberLiveAudioProcessor::autoSelectModel()
         selectedModel = models[0];
 
     TL_LOGI ("modelo", juce::String ("padrao: ")
-             + (selectedModel.isEmpty() ? juce::String ("nenhum") : selectedModel)
+             + (selectedModel.isEmpty() ? juce::String ("nenhum")
+                                        : tl::modelos::descricao (selectedModel))
              + juce::String::formatted ("  (%d nucleos fisicos; a medicao do RTF "
                                         "rebaixa se nao acompanhar)",
                                         juce::SystemStats::getNumPhysicalCpus()));
@@ -344,7 +366,11 @@ void TranscriberLiveAudioProcessor::timerCallback()
         {
             TL_LOGW ("modelo", "trocando " + selectedModel + " -> " + leve
                      + " (esta maquina nao acompanha o tempo real)");
-            trocaAutomatica = selectedModel + " -> " + leve;
+            // O aviso na tela usa o nome amigavel: quem le e o tecnico, e
+            // "Maxima precisao -> Equilibrado" diz o que aconteceu.
+            trocaAutomatica = tl::modelos::rotulo (selectedModel)
+                            + juce::String (juce::CharPointer_UTF8 (" \xe2\x86\x92 "))
+                            + tl::modelos::rotulo (leve);
             selectModel (leve);
         }
         else

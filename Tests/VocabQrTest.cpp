@@ -15,6 +15,7 @@
 */
 #include "Common/Vocabulario.h"
 #include "Common/QrCode.h"
+#include "Common/Modelos.h"
 #include <juce_core/juce_core.h>
 #include <cstdio>
 
@@ -178,10 +179,55 @@ static void testeQr()
 }
 
 //==============================================================================
+static void testeModelos()
+{
+    printf ("nomes dos modelos...\n");
+
+    // A armadilha: "ggml-large-v3-turbo.bin" contem "large" E "turbo". Se a
+    // tabela testar "large" primeiro, o turbo vira "pesado" na lista, entra
+    // na escala de peso no lugar errado e o rebaixamento automatico pula um
+    // degrau. A ordem da tabela e o que impede isso.
+    checa (tl::modelos::peso ("ggml-large-v3-turbo.bin") == 4,
+           "large-v3-turbo tem que pesar como turbo, nao como large");
+    checa (tl::modelos::peso ("ggml-large-v3.bin") == 5, "peso do large-v3");
+
+    // Escala crescente, do mais leve ao mais pesado.
+    const char* ordem[] = { "ggml-tiny.bin", "ggml-base.bin", "ggml-small.bin",
+                            "ggml-medium.bin", "ggml-large-v3-turbo.bin", "ggml-large-v3.bin" };
+
+    for (int i = 1; i < (int) juce::numElementsInArray (ordem); ++i)
+        checa (tl::modelos::peso (ordem[i - 1]) < tl::modelos::peso (ordem[i]),
+               juce::String (ordem[i - 1]) + " deveria pesar menos que " + ordem[i]);
+
+    // Todo modelo conhecido tem rotulo proprio, e nenhum rotulo se repete:
+    // dois itens com o mesmo texto na lista seriam impossiveis de distinguir.
+    juce::StringArray vistos;
+    for (auto* m : ordem)
+    {
+        const auto r = tl::modelos::rotulo (m);
+        checa (r != juce::String (m), juce::String ("sem rotulo proprio: ") + m);
+        checa (! vistos.contains (r), "rotulo repetido: " + r);
+        vistos.add (r);
+    }
+
+    // Modelo desconhecido nao pode sumir da lista nem furar a fila.
+    checa (tl::modelos::rotulo ("ggml-qualquer-coisa.bin") == "ggml-qualquer-coisa.bin",
+           "modelo desconhecido tem que aparecer pelo nome do arquivo");
+    checa (tl::modelos::peso ("ggml-qualquer-coisa.bin") == 99,
+           "modelo desconhecido tem que ir para o fim da fila");
+
+    // A descricao e o que vai para o log e para a dica: precisa levar o nome
+    // do arquivo junto, senao o suporte fica sem saber do que se trata.
+    checa (tl::modelos::descricao ("ggml-large-v3-turbo.bin").contains ("ggml-large-v3-turbo.bin"),
+           "a descricao tem que citar o nome do arquivo");
+}
+
+//==============================================================================
 int main()
 {
     testeVocabulario();
     testeQr();
+    testeModelos();
 
     printf (falhas == 0 ? "\nTUDO OK\n" : "\n%d FALHA(S)\n", falhas);
     return falhas == 0 ? 0 : 1;

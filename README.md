@@ -213,13 +213,29 @@ vários e trocar na hora). Sem escolher pasta, sem diálogo de arquivo.
 lidas, por compatibilidade: `~/Library/TranscriberLive/models`, `/Library/Application Support/TranscriberLive/models`
 e `~/Documents/TranscriberLive/models`; no Windows, `%PROGRAMDATA%\TranscriberLive\models` e `Documentos\TranscriberLive\models`.)
 
-| Arquivo | Tamanho | Para quê | Link direto |
+Na lista do plugin os modelos aparecem pelo que **entregam**, não pelo nome do arquivo:
+
+| Na lista do plugin | Arquivo | Tamanho | Quando usar |
 |---|---|---|---|
-| `ggml-silero-v5.1.2.bin` | 0,9 MB | **VAD** (detector de voz) — é o que rejeita ruído e vazamento. Sempre use. | https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin |
-| `ggml-small.bin` | 466 MB | Whisper — bom equilíbrio para PT-BR em CPU. **Comece por este.** | https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin |
-| `ggml-medium.bin` | 1,5 GB | Melhor qualidade; Apple Silicon (Metal) aguenta em tempo real | https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin |
-| `ggml-large-v3-turbo.bin` | 1,6 GB | Melhor ainda e rápido em Apple Silicon | https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin |
-| `ggml-small-q5_1.bin` | 190 MB | Versão leve do small — Windows sem GPU / notebook fraco | https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin |
+| — (obrigatório) | `ggml-silero-v5.1.2.bin` | 0,9 MB | **VAD** (detector de voz) — é o que rejeita ruído e vazamento. Sempre. |
+| Velocidade máxima | `ggml-tiny.bin` | 74 MB | Erra muito em PT-BR. Só para teste. |
+| Mais rápido | `ggml-base.bin` | 141 MB | Máquina fraca ou Mac Intel. |
+| Equilibrado | `ggml-small.bin` | 466 MB | Bom reconhecimento com folga de CPU. Serve na maioria dos PCs. |
+| Melhor transcrição | `ggml-medium.bin` | 1,5 GB | Reconhece bem melhor; exige máquina boa. |
+| Máxima precisão | `ggml-large-v3-turbo.bin` | 1,6 GB | **Padrão no Apple Silicon.** O que mais acerta sem perder o tempo real. |
+| Máxima precisão (pesado) | `ggml-large-v3.bin` | 3,1 GB | Teto do reconhecimento. Pode não acompanhar o show. |
+
+Links diretos: todos em `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/<arquivo>`,
+e o VAD em `https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin`.
+
+**O que vem nos instaladores:**
+
+- **macOS** — `Máxima precisão` (turbo) e `Mais rápido` (base), embutidos: instala offline.
+  São só dois porque o GitHub recusa anexo de Release acima de 2 GiB, e os dois já somam 1,7 GiB.
+- **Windows** — você marca o que quer na instalação e o instalador baixa. `Equilibrado` vem marcado.
+
+**O plugin escolhe sozinho** o melhor modelo instalado ao abrir e, se a medição do RTF mostrar
+que a máquina não acompanha, desce um degrau e avisa na tela.
 
 Lista completa: https://huggingface.co/ggerganov/whisper.cpp/tree/main
 
@@ -375,7 +391,7 @@ snapshot do host), não são parâmetros automatizáveis.
 | "Esta licença foi emitida para outro computador" | A chave é presa à máquina. Mande o ID novo para receber outra. |
 | "Nenhum modelo carregado" / lista Modelo vazia | Coloque os `.bin` na pasta de modelos (seção 6). A lista atualiza sozinha em 5 s. |
 | O host ou o app fechava sozinho quando o celular desconectava (v0.2) | Corrigido na v0.3: os sockets agora ignoram `SIGPIPE` (o macOS matava o processo ao escrever num socket fechado). |
-| Transcreve com atraso grande / o host engasga | Modelo grande demais para a CPU. Use `small` ou `small-q5_1`. Desligue "Mostrar parciais". |
+| Transcreve com atraso grande / o host engasga | Modelo grande demais para a CPU. Escolha `Mais rápido` na lista. Desligue "Mostrar parciais". |
 | Muita coisa errada / inventada | Suba o **Gate**, baixe a **Sensib. VAD**, confira se o VAD Silero está carregado (linha de status). Desligue TRANSCREVER durante a música. |
 | Display diz "em uso por outro programa - tentando..." e não espelha | Outro programa (não o Transcriber) usa a porta 47801. Mude as portas em **Rede...** (vale para todos os plugins e o app na máquina). |
 | Receivers não aparecem no Display | Confira o IP:porta no Receiver; firewall; se estão em computadores diferentes, os dois no mesmo Wi-Fi/cabo. |
