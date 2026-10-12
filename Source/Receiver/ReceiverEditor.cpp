@@ -41,7 +41,9 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
 {
     TL_TRACE ("--- editor: construindo ---");
     setLookAndFeel (&lnf);
-    setSize (680, 352);
+    /*  Menor do que era: sairam o botao Rede e a lista de modelos deu lugar a
+        tres opcoes curtas. Num rack de palco cada pixel da tela touch conta.  */
+    setSize (620, 330);
 
     addAndMakeVisible (logo);
 
@@ -59,7 +61,7 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     initLabel (lastLineLabel,   "", 15.0f, kDim);
     initLabel (nameLabel,       "Nome", 12.0f, kDim);
     initLabel (importanceLabel, "Import.", 12.0f, kDim);
-    initLabel (modelLabel,      "Modelo", 12.0f, kDim);
+    initLabel (modoLabel,       "Modo", 12.0f, kDim);
     initLabel (gateLabel,       "Gate", 12.0f, kDim, juce::Justification::centred);
     initLabel (vadLabel,        "Sensib. VAD", 12.0f, kDim, juce::Justification::centred);
     initLabel (holdLabel,       "Fim de frase", 12.0f, kDim, juce::Justification::centred);
@@ -99,9 +101,6 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     };
     addAndMakeVisible (colourButton);
 
-    networkButton.onClick = [this] { showNetwork(); };
-    addAndMakeVisible (networkButton);
-
     qrButton.onClick = [this] { showQr(); };
     qrButton.setTooltip (juce::String (juce::CharPointer_UTF8 (
         "Mostra um QR Code para abrir o Display no celular ou tablet")));
@@ -125,7 +124,7 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
         if (info.valid)
         {
             licensePanelOpen = false;
-            refreshModelList();
+            refreshModoUi();
         }
         refreshLicenseUi();
         if (! info.valid)
@@ -140,26 +139,20 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     licensePanel.onClose = [this] { licensePanelOpen = false; refreshLicenseUi(); };
     addChildComponent (licensePanel);
 
-    // ---- modelo ------------------------------------------------------------------
-    // A lista mostra o que o modelo ENTREGA ("Maxima precisao"), nao o nome do
-    // arquivo. Entao a selecao vai pelo INDICE, e nao pelo texto: o texto
-    // visivel deixou de ser o nome do arquivo.
-    modelBox.onChange = [this]
+    // ---- modo --------------------------------------------------------------------
+    // Tres comportamentos, nao uma lista de arquivos. Qual .bin atende cada
+    // modo e decisao do processador, e muda com o que esta instalado.
+    for (int i = 0; i < 3; ++i)
+        modoBox.addItem (tl::modelos::rotuloModo (tl::modelos::modoDeIndice (i)), i + 1);
+
+    modoBox.onChange = [this]
     {
-        const int i = modelBox.getSelectedItemIndex();
-
-        if (i >= 0 && i < lastModelList.size())
-        {
-            const auto arquivo = lastModelList[i];
-
-            if (arquivo != processor.getSelectedModel())
-                processor.selectModel (arquivo);
-
-            modelBox.setTooltip (tl::modelos::descricao (arquivo));
-        }
+        const auto m = tl::modelos::modoDeIndice (modoBox.getSelectedItemIndex());
+        processor.setModo (m);
+        modoBox.setTooltip (tl::modelos::detalheModo (m));
     };
-    addAndMakeVisible (modelBox);
-    { TL_TRACE_STEP ("editor: lista de modelos"); refreshModelList(); }
+    addAndMakeVisible (modoBox);
+    { TL_TRACE_STEP ("editor: modos"); refreshModoUi(); }
 
     // ---- medidor + knobs ---------------------------------------------------------
     addAndMakeVisible (meter);
@@ -231,8 +224,6 @@ void TranscriberLiveAudioProcessorEditor::resized()
     row1.removeFromRight (6);
     qrButton.setBounds (row1.removeFromRight (40).reduced (0, 2));
     row1.removeFromRight (6);
-    networkButton.setBounds (row1.removeFromRight (66).reduced (0, 2));
-    row1.removeFromRight (6);
     licenseButton.setBounds (row1.removeFromRight (74).reduced (0, 2));
     row1.removeFromRight (6);
     flashButton.setBounds (row1.removeFromRight (62));
@@ -248,10 +239,10 @@ void TranscriberLiveAudioProcessorEditor::resized()
 
     r.removeFromTop (6);
 
-    // linha 2: modelo
+    // linha 2: modo
     auto row2 = r.removeFromTop (30);
-    modelLabel.setBounds (row2.removeFromLeft (52));
-    modelBox.setBounds (row2.reduced (0, 2));
+    modoLabel.setBounds (row2.removeFromLeft (42));
+    modoBox.setBounds (row2.reduced (0, 2));
 
     r.removeFromTop (10);
 
@@ -284,7 +275,7 @@ void TranscriberLiveAudioProcessorEditor::setControlsVisible (bool v)
 {
     for (auto* c : std::initializer_list<juce::Component*> {
              &nameLabel, &nameEditor, &colourButton, &importanceLabel, &importanceBox, &flashButton,
-             &networkButton, &qrButton, &modelLabel, &modelBox, &meter, &speechLabel,
+             &qrButton, &modoLabel, &modoBox, &meter, &speechLabel,
              &gateSlider, &vadSlider, &holdSlider, &gateLabel, &vadLabel, &holdLabel,
              &partialsButton, &lastLineLabel })
         c->setVisible (v);
@@ -327,19 +318,28 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
     speechLabel.setColour (juce::Label::backgroundColourId, speech ? kText : juce::Colours::transparentBlack);
     speechLabel.setColour (juce::Label::textColourId, speech ? kBg : kDim);
 
-    // status: modelo + VAD
-    juce::String s = eng.getStatus();
-    if (eng.isModelLoaded())
-        s += processor.hasVadModel() ? "  |  VAD ok" : utf8 ("  |  VAD n\xc3\xa3o encontrado (ggml-silero*.bin)");
-    if (eng.isTranscribing()) s += "  |  transcrevendo...";
+    /*  Barra de status: so o que o tecnico precisa saber.
 
-    // Se o plugin rebaixou o modelo sozinho, o usuario PRECISA ver -- senao ele
-    // ve o modelo mudar na lista e conclui que o plugin esta com defeito.
-    // Fica na frente de tudo, porque e a informacao mais importante da tela
-    // naquele momento.
+        O nome do arquivo do modelo e o "VAD ok" sairam daqui. Para quem opera
+        uma mesa no meio de um show isso e ruido: nao da para agir sobre nenhum
+        dos dois, e ocupavam a linha que precisa ficar livre para o aviso que
+        importa. Os dois continuam no Log, que e o que o suporte le.
+
+        O motor so preenche o status quando ha problema; dando tudo certo ele
+        vem vazio, e a barra fica limpa.                                       */
+    juce::String s = eng.getStatus();
+    if (eng.isTranscribing())
+        s += s.isEmpty() ? juce::String ("transcrevendo...")
+                         : juce::String ("  |  transcrevendo...");
+
+    /*  Quando o Automatico alivia sozinho, o tecnico PRECISA ver -- senao ele
+        nota a transcricao mudando de qualidade no meio do show e conclui que
+        o plugin esta com defeito. Fica na frente de tudo: naquele momento e
+        a informacao mais importante da tela.                                */
     if (const auto troca = processor.getTrocaAutomatica(); troca.isNotEmpty())
-        s = utf8 ("Modelo trocado automaticamente (") + troca
-          + utf8 ("): esta mÃ¡quina nÃ£o acompanhava o tempo real.   |   ") + s;
+        s = utf8 ("Autom\xc3\xa1tico: ") + troca
+          + utf8 (" \xe2\x80\x94 esta m\xc3\xa1quina n\xc3\xa3o acompanhava o tempo real.")
+          + (s.isEmpty() ? juce::String() : juce::String ("   |   ") + s);
 
     if (statusLabel.getText() != s) statusLabel.setText (s, juce::dontSendNotification);
 
@@ -353,49 +353,16 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
         lastLineLabel.setText (t, juce::dontSendNotification);
     }
 
-    // lista de modelos (re-escaneia a pasta a cada 5 s — barato)
-    const auto now = juce::Time::getMillisecondCounter();
-    if (now - lastModelScan > 5000) refreshModelList();
 }
 
-void TranscriberLiveAudioProcessorEditor::refreshModelList()
+void TranscriberLiveAudioProcessorEditor::refreshModoUi()
 {
-    lastModelScan = juce::Time::getMillisecondCounter();
+    const int idx = (int) processor.getModo();
 
-    auto models = processor.getAvailableModels();
-    const auto selected = processor.getSelectedModel();
+    if (modoBox.getSelectedItemIndex() != idx)
+        modoBox.setSelectedItemIndex (idx, juce::dontSendNotification);
 
-    // Do mais leve para o mais pesado. A ordem alfabetica dos arquivos
-    // ("base, large, medium, small, tiny") nao diz nada; esta diz.
-    std::stable_sort (models.strings.begin(), models.strings.end(),
-                      [] (const juce::String& a, const juce::String& b)
-                      { return tl::modelos::peso (a) < tl::modelos::peso (b); });
-
-    const int idxSelecionado = models.indexOf (selected);
-
-    if (models != lastModelList || modelBox.getSelectedItemIndex() != idxSelecionado)
-    {
-        lastModelList = models;
-        modelBox.clear (juce::dontSendNotification);
-
-        if (models.isEmpty())
-        {
-            modelBox.setTextWhenNothingSelected (utf8 ("nenhum ggml-*.bin em ") + tl::Hub::getModelsDir().getFullPathName());
-            modelBox.setTooltip ({});
-        }
-        else
-        {
-            juce::StringArray rotulos;
-            for (auto& m : models)
-                rotulos.add (tl::modelos::rotulo (m));
-
-            modelBox.addItemList (rotulos, 1);
-
-            const int idx = idxSelecionado >= 0 ? idxSelecionado : 0;
-            modelBox.setSelectedItemIndex (idx, juce::dontSendNotification);
-            modelBox.setTooltip (tl::modelos::descricao (models[idx]));
-        }
-    }
+    modoBox.setTooltip (tl::modelos::detalheModo (processor.getModo()));
 }
 
 void TranscriberLiveAudioProcessorEditor::loadIdentityToUi()
@@ -637,56 +604,3 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     juce::CallOutBox::launchAsynchronously (std::move (panel), qrButton.getScreenBounds(), nullptr);
 }
 
-void TranscriberLiveAudioProcessorEditor::showNetwork()
-{
-    struct Panel : juce::Component
-    {
-        juce::Label info, l1;
-        juce::TextEditor remote;
-        juce::TextButton apply { "Aplicar" };
-        Panel()
-        {
-            for (auto* c : std::initializer_list<juce::Component*> { &info, &l1, &remote, &apply }) addAndMakeVisible (c);
-            info.setFont (juce::FontOptions (12.0f));
-            info.setColour (juce::Label::textColourId, tl::col::dim);
-            info.setJustificationType (juce::Justification::topLeft);
-            l1.setText ("Display remoto (IP:porta):", juce::dontSendNotification);
-            setSize (340, 150);
-        }
-        void resized() override
-        {
-            auto r = getLocalBounds().reduced (10);
-            info.setBounds (r.removeFromTop (52));
-            r.removeFromTop (4);
-            auto a = r.removeFromTop (26); l1.setBounds (a.removeFromLeft (170)); remote.setBounds (a);
-            r.removeFromTop (10);
-            apply.setBounds (r.removeFromTop (28));
-        }
-    };
-
-    auto panel = std::make_unique<Panel>();
-    const auto id = processor.getIdentity();
-    auto& hub = *processor.hub;
-    panel->info.setText (juce::String ("Nesta m") + utf8 ("\xc3\xa1") + "quina: UDP " + juce::String (hub.getBusPort())
-                         + (hub.isBusPrimary() ? " (ativo aqui)" : " (em outro programa)")
-                         + "\nCelular/tablet: " + hub.getWebAddressHint()
-                         + "\nDeixe vazio se o Display roda neste computador.", juce::dontSendNotification);
-    panel->remote.setText (id.remoteHost.isEmpty() ? juce::String() : id.remoteHost + ":" + juce::String (id.remotePort));
-    panel->remote.setTextToShowWhenEmpty ("ex.: 192.168.0.20:47800", tl::col::dim);
-
-    auto* raw = panel.get();
-    juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> safe (this);
-    raw->apply.onClick = [safe, raw]
-    {
-        if (safe == nullptr) return;
-        auto id2 = safe->processor.getIdentity();
-        const auto t = raw->remote.getText().trim();
-        id2.remoteHost = t.upToFirstOccurrenceOf (":", false, false).trim();
-        const int port = t.fromFirstOccurrenceOf (":", false, false).getIntValue();
-        id2.remotePort = port > 0 ? port : tl::kDefaultBusPort;
-        safe->processor.setIdentity (id2);
-        if (auto* box = raw->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
-    };
-
-    juce::CallOutBox::launchAsynchronously (std::move (panel), networkButton.getScreenBounds(), nullptr);
-}

@@ -91,4 +91,91 @@ inline int peso (const juce::String& nomeArquivo)
     return 99;
 }
 
+//==============================================================================
+/*  MODOS
+
+    O tecnico nao escolhe mais um arquivo de modelo: escolhe o que ele quer da
+    ferramenta. Qual .bin atende aquilo e problema nosso, e muda conforme o que
+    esta instalado na maquina.
+
+      Automatico  comeca no melhor que a maquina aguenta e desce sozinho se o
+                  RTF mostrar que nao acompanha. E o que o plugin ja fazia.
+      Desempenho  fixa o mais leve dos instalados. Nunca sobe, nunca desce.
+      Precisao    fixa o mais pesado. NAO rebaixa nem se atrasar -- quem
+                  escolhe isto esta dizendo que prefere esperar a errar.
+
+    Com o instalador padrao ha dois modelos (base e large-v3-turbo), entao os
+    tres modos sao de fato tres comportamentos diferentes. Se um dia houver so
+    um modelo, os tres apontam para ele e nada quebra.                        */
+
+enum class Modo { automatico = 0, desempenho = 1, precisao = 2 };
+
+inline Modo modoDeIndice (int i)
+{
+    return i == 1 ? Modo::desempenho : (i == 2 ? Modo::precisao : Modo::automatico);
+}
+
+inline juce::String rotuloModo (Modo m)
+{
+    switch (m)
+    {
+        case Modo::desempenho: return juce::String (juce::CharPointer_UTF8 ("Desempenho"));
+        case Modo::precisao:   return juce::String (juce::CharPointer_UTF8 ("Precis\xc3\xa3o"));
+        case Modo::automatico:
+        default:               return juce::String (juce::CharPointer_UTF8 ("Autom\xc3\xa1tico"));
+    }
+}
+
+inline juce::String detalheModo (Modo m)
+{
+    switch (m)
+    {
+        case Modo::desempenho:
+            return juce::String (juce::CharPointer_UTF8 (
+                "Responde o mais r\xc3\xa1pido poss\xc3\xadvel. Erra mais palavra, "
+                "mas n\xc3\xa3o atrasa nem na m\xc3\xa1quina mais fraca."));
+        case Modo::precisao:
+            return juce::String (juce::CharPointer_UTF8 (
+                "O melhor reconhecimento dispon\xc3\xadvel. Em m\xc3\xa1quina fraca "
+                "a legenda pode atrasar \xe2\x80\x94 e n\xc3\xa3o vai se rebaixar sozinho."));
+        case Modo::automatico:
+        default:
+            return juce::String (juce::CharPointer_UTF8 (
+                "Comeca no melhor que esta m\xc3\xa1quina aguenta e alivia sozinho "
+                "se come\xc3\xa7ar a atrasar. Na d\xc3\xbavida, deixe neste."));
+    }
+}
+
+/** O mais leve e o mais pesado entre os instalados. Vazio se a lista estiver
+    vazia. Usa a mesma escala de peso da tabela acima. */
+inline juce::String maisLeve (const juce::StringArray& instalados)
+{
+    juce::String melhor;
+    int melhorPeso = 1000;
+
+    for (auto& m : instalados)
+        if (const int p = peso (m); p < melhorPeso) { melhorPeso = p; melhor = m; }
+
+    return melhor;
+}
+
+inline juce::String maisPesado (const juce::StringArray& instalados)
+{
+    juce::String melhor;
+    int melhorPeso = -1;
+
+    for (auto& m : instalados)
+    {
+        // Modelo desconhecido tem peso 99; nao deixamos ele virar "o mais
+        // pesado" so por nao estar na tabela.
+        const int p = peso (m);
+        if (p < 99 && p > melhorPeso) { melhorPeso = p; melhor = m; }
+    }
+
+    if (melhor.isEmpty() && ! instalados.isEmpty())
+        melhor = instalados[instalados.size() - 1];
+
+    return melhor;
+}
+
 } // namespace tl::modelos

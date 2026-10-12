@@ -24,7 +24,11 @@
 #define AppVersion     "0.4"
 #define AppPublisher   "Jhonatan Miikael"
 #define AppSupport     "jhonyfascpinda@gmail.com"
-#define AppId          "{{B7E4A21C-9F3D-4A76-8C51-3D2E7A64F1B9}"
+; O GUID aparece em dois lugares: no AppId (onde o Inno exige "{{" para
+; representar uma chave literal) e na chave do registro lida em [Code] (onde
+; a chave e simples). Uma definicao so, para os dois nao se separarem.
+#define AppGuid        "{B7E4A21C-9F3D-4A76-8C51-3D2E7A64F1B9}"
+#define AppId          "{" + AppGuid
 
 #ifndef BIN
   #define BIN "binarios"
@@ -167,11 +171,14 @@ var
   MdSha:     array[0..UltimoModelo] of String;
   MdRotulo:  array[0..UltimoModelo] of String;
 
-// Os rotulos abaixo sao os MESMOS nomes que aparecem na lista do plugin
-// (tl::modelos, em Source/Common/Modelos.h). Quem instala escolhendo
-// "Maxima precisao" tem que achar "Maxima precisao" na lista depois -- se os
-// dois textos discordarem, o tecnico fica procurando um modelo que ele acha
-// que nao instalou.
+// O plugin NAO mostra mais uma lista de modelos: mostra tres modos
+// (Automatico, Desempenho, Precisao) e escolhe o arquivo sozinho, entre os
+// instalados. Entao os rotulos aqui descrevem o arquivo pelo que ele custa e
+// pelo que entrega -- nao prometem um item de lista que o tecnico iria
+// procurar e nao achar.
+//
+// Na pratica: o que for mais leve atende o modo Desempenho, o mais pesado
+// atende Precisao, e o Automatico anda entre os dois conforme a maquina.
 procedure DefineModelos;
 var
   Base, Vad: String;
@@ -187,12 +194,12 @@ begin
   MdArquivo[1] := 'ggml-tiny.bin';
   MdUrl[1]     := Base + 'ggml-tiny.bin';
   MdSha[1]     := 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21';
-  MdRotulo[1]  := 'Velocidade maxima - 74 MB - erra muito, so para teste';
+  MdRotulo[1]  := 'Leve demais - 74 MB - erra muito em portugues, so para teste';
 
   MdArquivo[2] := 'ggml-base.bin';
   MdUrl[2]     := Base + 'ggml-base.bin';
   MdSha[2]     := '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe';
-  MdRotulo[2]  := 'Mais rapido - 141 MB - para PC modesto';
+  MdRotulo[2]  := 'Rapido - 141 MB - atende o modo Desempenho em PC modesto';
 
   MdArquivo[3] := 'ggml-small.bin';
   MdUrl[3]     := Base + 'ggml-small.bin';
@@ -202,12 +209,63 @@ begin
   MdArquivo[4] := 'ggml-medium.bin';
   MdUrl[4]     := Base + 'ggml-medium.bin';
   MdSha[4]     := '6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208';
-  MdRotulo[4]  := 'Melhor transcricao - 1,4 GB - exige CPU boa';
+  MdRotulo[4]  := 'Reconhece bem melhor - 1,4 GB - exige CPU boa';
 
   MdArquivo[5] := 'ggml-large-v3-turbo.bin';
   MdUrl[5]     := Base + 'ggml-large-v3-turbo.bin';
   MdSha[5]     := '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69';
-  MdRotulo[5]  := 'Maxima precisao - 1,5 GB - o que mais acerta, exige PC forte';
+  MdRotulo[5]  := 'O que mais acerta - 1,5 GB - atende o modo Precisao, exige PC forte';
+end;
+
+{  Remove a instalacao anterior ANTES de copiar a nova.
+
+   Sem isto o Inno escreve por cima do bundle VST3 antigo. Se a versao nova tem
+   menos arquivos la dentro -- um recurso que saiu, uma DLL que deixou de ser
+   usada -- o arquivo velho FICA, e o bundle vira uma mistura das duas versoes.
+   Da defeito que nao se explica e que some quando o cliente desinstala e
+   instala de novo.
+
+   O desinstalador do Inno nao toca nos modelos (uninsneveruninstall) nem na
+   licenca do cliente, que e criada pelo plugin em tempo de execucao e por isso
+   nao esta na lista de arquivos instalados. Entao "desinstalar antes" aqui nao
+   custa download nem licenca ao cliente.                                      }
+function DesinstalaAnterior(): Boolean;
+var
+  Chave, Comando: String;
+  Codigo: Integer;
+begin
+  Result := True;
+  Chave := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppGuid}_is1';
+
+  { HKLM aqui ja e a visao de 64 bits (ArchitecturesInstallIn64BitMode).
+    HKLM32 pega quem instalou com uma versao antiga do instalador, antes de o
+    modo 64 bits existir -- senao o recibo velho fica invisivel e a limpeza
+    nao acontece justo em quem mais precisa dela. }
+  if not RegQueryStringValue(HKLM,   Chave, 'UninstallString', Comando) then
+   if not RegQueryStringValue(HKLM32, Chave, 'UninstallString', Comando) then
+    if not RegQueryStringValue(HKCU,  Chave, 'UninstallString', Comando) then
+      Exit;   // nada instalado: segue a vida
+
+  Comando := RemoveQuotes(Comando);
+  if not FileExists(Comando) then
+    Exit;     // recibo orfao: o desinstalador ja nao existe
+
+  { /VERYSILENT para nao abrir uma segunda janela na cara de quem so quis
+    atualizar. Falha aqui NAO cancela a instalacao: ficar sem atualizar e pior
+    do que atualizar por cima. }
+  if not Exec(Comando, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART',
+              '', SW_HIDE, ewWaitUntilTerminated, Codigo) then
+    Exit;
+
+  { O desinstalador do Inno devolve antes de o ultimo arquivo sair do disco. }
+  Sleep(1200);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  NeedsRestart := False;
+  DesinstalaAnterior();
+  Result := '';
 end;
 
 function JaInstalado(const Arquivo: String): Boolean;

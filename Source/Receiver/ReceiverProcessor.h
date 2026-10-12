@@ -5,6 +5,7 @@
 #include "Common/TranscriptionEngine.h"
 #include "Common/MessageBus.h"
 #include "Common/Hub.h"
+#include "Common/Modelos.h"
 #include "Common/License.h"
 
 //==============================================================================
@@ -72,6 +73,10 @@ public:
     void              selectModel (const juce::String& fileName);
     bool              hasVadModel() const                { return vadFile.existsAsFile(); }
 
+    //-- Modo de transcricao (o que a interface mostra no lugar do modelo) ---------
+    tl::modelos::Modo getModo() const noexcept           { return modo; }
+    void              setModo (tl::modelos::Modo m);
+
     //-- Identidade do canal (Receiver -> Display) ---------------------------------
     struct Identity
     {
@@ -101,6 +106,9 @@ private:
     void send (const tl::Message& m);
     tl::Message makeMessage (const juce::String& type) const;
     void autoSelectModel();
+    /** Aplica o modo atual: escolhe o arquivo que o modo pede, entre os
+        instalados. Em "automatico" delega para autoSelectModel(). */
+    void aplicarModo();
     /** Proximo modelo mais leve que o atual, entre os instalados. Vazio se o
         atual ja for o mais leve. */
     juce::String escolherModeloMaisLeve (const juce::String& atual) const;
@@ -129,6 +137,7 @@ private:
     std::atomic<float> inputLevelDb { -100.0f };
 
     juce::String selectedModel;
+    tl::modelos::Modo modo = tl::modelos::Modo::automatico;
     juce::String trocaAutomatica;   // preenchido quando o plugin rebaixa o modelo sozinho
     juce::File   modelFile, vadFile;
 

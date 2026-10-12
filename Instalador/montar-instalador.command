@@ -167,6 +167,9 @@ fundo() {
 echo ""
 echo "Gerando o instalador..."
 /bin/chmod +x scripts/postinstall 2>/dev/null
+# Sem +x o pkgbuild embute o script, o Installer tenta rodar e falha calado:
+# a limpeza nao acontece e a instalacao nova fica por cima da velha.
+/bin/chmod +x scripts/preinstall  2>/dev/null
 /bin/rm -f "$SAIDA"/*.pkg
 
 # --- trava a RELOCACAO DE BUNDLE (senao o app some da pasta Aplicativos) -----

@@ -172,6 +172,56 @@ juce::String TranscriberLiveAudioProcessor::escolherModeloMaisLeve (const juce::
     return melhor;
 }
 
+void TranscriberLiveAudioProcessor::setModo (tl::modelos::Modo m)
+{
+    if (m == modo) return;
+    modo = m;
+
+    // Trocar de modo limpa o aviso de rebaixamento: ele falava do modo
+    // anterior, e deixar na tela diria algo que nao vale mais.
+    trocaAutomatica.clear();
+
+    TL_LOGI ("modelo", "modo: " + tl::modelos::rotuloModo (modo));
+    aplicarModo();
+}
+
+/*  Qual arquivo cada modo pede.
+
+    Nao guardamos o arquivo escolhido por modo: a lista de modelos instalados
+    pode mudar (o cliente copia outro ggml-*.bin para a pasta), e o modo tem
+    que valer sobre o que existe AGORA, nao sobre o que existia quando ele foi
+    escolhido.                                                                */
+void TranscriberLiveAudioProcessor::aplicarModo()
+{
+    const auto instalados = getAvailableModels();
+    if (instalados.isEmpty()) { selectedModel.clear(); loadModels(); return; }
+
+    juce::String alvo;
+
+    switch (modo)
+    {
+        case tl::modelos::Modo::desempenho: alvo = tl::modelos::maisLeve   (instalados); break;
+        case tl::modelos::Modo::precisao:   alvo = tl::modelos::maisPesado (instalados); break;
+
+        case tl::modelos::Modo::automatico:
+        default:
+            // No automatico quem escolhe o ponto de partida e a heuristica de
+            // sempre; a medicao do RTF rebaixa depois, se precisar.
+            selectedModel.clear();
+            autoSelectModel();
+            loadModels();
+            return;
+    }
+
+    if (alvo.isNotEmpty() && alvo != selectedModel)
+    {
+        selectedModel = alvo;
+        TL_LOGI ("modelo", tl::modelos::rotuloModo (modo) + ": "
+                 + tl::modelos::descricao (selectedModel));
+        loadModels();
+    }
+}
+
 void TranscriberLiveAudioProcessor::autoSelectModel()
 {
     if (selectedModel.isNotEmpty() && tl::Hub::findModelFiles().count (selectedModel) > 0)
@@ -354,36 +404,48 @@ void TranscriberLiveAudioProcessor::timerCallback()
         maquina no limite ficaria pulando entre modelos no meio do show, que e
         pior do que qualquer um dos dois.
 
-        A troca vale mesmo que o cliente tenha escolhido o modelo na mao: num
-        palco, texto que chega minutos atrasado nao serve para nada, entao
-        manter a preferencia dele seria respeitar a escolha e entregar algo
-        inutil. O status e o log dizem claramente o que houve e por que.      */
+        SO no modo Automatico. Em Precisao o tecnico escolheu explicitamente
+        esperar em vez de errar, e trocar por baixo dele seria desfazer a
+        escolha sem avisar; em Desempenho ja estamos no mais leve, nao ha para
+        onde descer. O aviso continua indo para o log nos tres modos.         */
     if (engine.consumirAvisoDeLentidao())
     {
-        const auto leve = escolherModeloMaisLeve (selectedModel);
-
-        if (leve.isNotEmpty())
+        if (modo != tl::modelos::Modo::automatico)
         {
-            TL_LOGW ("modelo", "trocando " + selectedModel + " -> " + leve
-                     + " (esta maquina nao acompanha o tempo real)");
-            // O aviso na tela usa o nome amigavel: quem le e o tecnico, e
-            // "Maxima precisao -> Equilibrado" diz o que aconteceu.
-            trocaAutomatica = tl::modelos::rotulo (selectedModel)
-                            + juce::String (juce::CharPointer_UTF8 (" \xe2\x86\x92 "))
-                            + tl::modelos::rotulo (leve);
-            selectModel (leve);
+            TL_LOGW ("modelo", "esta maquina nao acompanha o tempo real, mas o modo "
+                     + tl::modelos::rotuloModo (modo) + " nao rebaixa sozinho");
         }
         else
         {
-            // Fim da escada de modelos. Sobra o modo economico: encurta a
-            // janela do encoder, corta o reprocessamento e desliga as
-            // parciais. Reconhece pior -- mas texto ruim no tempo certo ainda
-            // serve num palco; texto bom sete segundos atrasado nao serve.
-            TL_LOGW ("modelo", selectedModel + " ja e o modelo mais leve instalado "
-                     "-- ligando o modo economico (mais rapido, reconhece pior)");
-            engine.ativarModoEconomico();
-            trocaAutomatica = juce::String (juce::CharPointer_UTF8 (
-                "modo econÃ´mico (esta mÃ¡quina nÃ£o acompanha nem o modelo mais leve)"));
+            const auto leve = escolherModeloMaisLeve (selectedModel);
+
+            if (leve.isNotEmpty())
+            {
+                TL_LOGW ("modelo", "trocando " + selectedModel + " -> " + leve
+                         + " (esta maquina nao acompanha o tempo real)");
+                /*  O aviso na tela nao cita modelo nenhum.
+
+                    A interface mostra modos, nao arquivos: dizer
+                    "Maxima precisao -> Equilibrado" mandaria o tecnico
+                    procurar na tela dois nomes que nao existem mais la.
+                    Os dois continuam no log, na linha acima, que e o que
+                    o suporte le.                                        */
+                trocaAutomatica = juce::String (juce::CharPointer_UTF8 (
+                    "aliviei o processamento"));
+                selectModel (leve);
+            }
+            else
+            {
+                // Fim da escada de modelos. Sobra o modo economico: encurta a
+                // janela do encoder, corta o reprocessamento e desliga as
+                // parciais. Reconhece pior -- mas texto ruim no tempo certo ainda
+                // serve num palco; texto bom sete segundos atrasado nao serve.
+                TL_LOGW ("modelo", selectedModel + " ja e o modelo mais leve instalado "
+                         "-- ligando o modo economico (mais rapido, reconhece pior)");
+                engine.ativarModoEconomico();
+                trocaAutomatica = juce::String (juce::CharPointer_UTF8 (
+                    "liguei o modo econ\xc3\xb4mico"));
+            }
         }
     }
 }
@@ -540,6 +602,7 @@ void TranscriberLiveAudioProcessor::getStateInformation (juce::MemoryBlock& dest
 {
     auto state = apvts.copyState();
     state.setProperty ("model", selectedModel, nullptr);
+    state.setProperty ("modo",  (int) modo, nullptr);
 
     const auto id = getIdentity();
     state.setProperty ("channelId",  id.channelId, nullptr);
@@ -563,9 +626,20 @@ void TranscriberLiveAudioProcessor::setStateInformation (const void* data, int s
             auto state = juce::ValueTree::fromXml (*xml);
             apvts.replaceState (state);
 
+            /*  Projeto salvo antes dos modos nao tem a propriedade "modo".
+                Nesse caso fica em Automatico, que e como o plugin se comportava
+                para quem nunca mexeu na lista -- e o arquivo que estava
+                escolhido e respeitado como ponto de partida.                  */
+            modo = tl::modelos::modoDeIndice ((int) state.getProperty ("modo", (int) tl::modelos::Modo::automatico));
+
             const auto model = state.getProperty ("model", "").toString();
             if (model.isNotEmpty() && model != selectedModel && tl::Hub::findModelFiles().count (model) > 0)
                 selectModel (model);
+
+            // Nos modos fixos quem manda e o modo, nao o arquivo salvo: o
+            // cliente pode ter instalado outro modelo desde entao.
+            if (modo != tl::modelos::Modo::automatico)
+                aplicarModo();
 
             auto id = getIdentity();
             id.channelId  = state.getProperty ("channelId", id.channelId).toString();

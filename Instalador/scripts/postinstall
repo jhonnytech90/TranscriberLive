@@ -57,7 +57,10 @@ fi
 # gravar, falhava calado e voltava a dizer "nenhuma licenca instalada".
 # Nao criamos a pasta aqui (o plugin cria, com o dono certo): so consertamos
 # se ela ja existir com o dono errado.
+# Quem instala e root, entao $HOME aqui e do root. A casa que interessa e a de
+# quem esta logado na tela.
 U=$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
+CASA=""
 if [ -n "$U" ] && [ "$U" != "root" ]; then
     CASA=$(/usr/bin/dscl . -read "/Users/$U" NFSHomeDirectory 2>/dev/null | /usr/bin/awk '{print $2}')
     PASTA="$CASA/Library/Application Support/TranscriberLive"
@@ -67,6 +70,44 @@ if [ -n "$U" ] && [ "$U" != "root" ]; then
         /usr/sbin/chown -R "$U":staff "$PASTA" 2>/dev/null
         /bin/chmod -R u+rwX "$PASTA" 2>/dev/null
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# Limpa instalacao antiga na pasta do USUARIO.
+#
+# Ate a versao de setembro de 2026 este instalador colocava os plugins em
+# ~/Library/Audio/Plug-Ins. Agora eles vao para /Library. Quem atualiza fica
+# com DUAS copias -- e a do usuario tem prioridade na maioria dos hosts.
+# Resultado: instala a versao nova, abre o REAPER (ou Live, ou Logic) e
+# continua vendo a antiga, sem erro nenhum na tela. O SuperRack carrega a do
+# sistema, entao o mesmo Mac mostra duas versoes diferentes ao mesmo tempo.
+# Aconteceu de verdade e levou um tempo para ser entendido.
+#
+# Isto repete o que o preinstall ja faz, de proposito: e a rede de seguranca
+# do bug que ja aconteceu uma vez. Se um dia o preinstall nao rodar, aqui
+# ainda pega.
+#
+# Removemos SO os quatro bundles com nome exato, so dentro de
+# ~/Library/Audio/Plug-Ins. Nada de curinga: um instalador que apaga por
+# padrao na pasta de alguem e uma ideia ruim.
+# ---------------------------------------------------------------------------
+if [ -n "$CASA" ] && [ -d "$CASA" ]; then
+    ANTIGOS=0
+    for REL in "VST3/Transcriber Live Receiver.vst3" \
+               "VST3/Transcriber Live Display.vst3" \
+               "Components/Transcriber Live Receiver.component" \
+               "Components/Transcriber Live Display.component"; do
+        VELHO="$CASA/Library/Audio/Plug-Ins/$REL"
+        [ -e "$VELHO" ] || continue
+        if /bin/rm -rf "$VELHO"; then
+            echo "copia antiga removida: $VELHO"
+            ANTIGOS=$((ANTIGOS+1))
+        else
+            echo "AVISO: nao consegui remover a copia antiga: $VELHO"
+            echo "AVISO: o host pode continuar carregando a versao velha."
+        fi
+    done
+    [ "$ANTIGOS" -gt 0 ] && echo "$ANTIGOS copia(s) antiga(s) da pasta do usuario removida(s)."
 fi
 
 # o AU aparece sem precisar reiniciar o Mac

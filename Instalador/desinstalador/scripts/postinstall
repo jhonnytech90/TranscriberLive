@@ -56,6 +56,12 @@ if [ -n "$U" ] && [ "$U" != "root" ]; then
         # se sobrou so a licenca, a pasta fica; se ficou vazia, some
         /bin/rmdir "$PASTA" 2>/dev/null && echo "removido: $PASTA"
     fi
+    # copias antigas na pasta do usuario (instaladores ate setembro/2026)
+    remove "$CASA/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3"
+    remove "$CASA/Library/Audio/Plug-Ins/VST3/Transcriber Live Display.vst3"
+    remove "$CASA/Library/Audio/Plug-Ins/Components/Transcriber Live Receiver.component"
+    remove "$CASA/Library/Audio/Plug-Ins/Components/Transcriber Live Display.component"
+
     # preferencias dos plugins
     for P in "$CASA/Library/Preferences/Transcriber Live Receiver.settings" \
              "$CASA/Library/Preferences/Transcriber Live Display.settings"; do

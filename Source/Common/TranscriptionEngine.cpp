@@ -151,7 +151,8 @@ void TranscriptionEngine::handleModelRequests()
         modelLoaded.store (false);
         vadLoaded.store (false);
         const juce::ScopedLock sl (statusLock);
-        status = "Nenhum modelo carregado";
+        status = juce::String (juce::CharPointer_UTF8 (
+            "Nenhum modelo instalado \xe2\x80\x94 reinstale o Transcriber Live."));
     }
 
     if (hasPendingModel.exchange (false))
@@ -218,13 +219,17 @@ void TranscriptionEngine::handleModelRequests()
         if (ctx != nullptr)
         {
             modelLoaded.store (true);
-            status = "Modelo: " + file.getFileName();
+            // O nome do arquivo nao diz nada para quem opera a mesa; ele
+            // continua no log, que e o que o suporte le. Aqui, silencio:
+            // barra de status so deve falar quando ha o que dizer.
+            status.clear();
             TL_LOGI ("modelo", juce::String::formatted ("carregado em %.0f ms: ", levou)
                      + file.getFileName());
         }
         else
         {
-            status = "Falha ao carregar " + file.getFileName();
+            status = juce::String (juce::CharPointer_UTF8 (
+                "Falha ao carregar o modelo \xe2\x80\x94 veja o Log."));
             TL_LOGE ("modelo", "FALHOU ao carregar " + file.getFullPathName()
                      + (file.existsAsFile() ? " (arquivo existe -- modelo corrompido ou sem memoria?)"
                                             : " (o arquivo nao existe)"));
@@ -249,7 +254,8 @@ void TranscriptionEngine::handleModelRequests()
         const juce::ScopedLock sl (statusLock);
         if (vctx == nullptr)
         {
-            status = "Falha ao carregar VAD " + file.getFileName();
+            status = juce::String (juce::CharPointer_UTF8 (
+                "Falha ao carregar o detector de voz \xe2\x80\x94 veja o Log."));
             TL_LOGW ("vad", "FALHOU: " + file.getFullPathName()
                      + " -- sem VAD o corte de frase usa so o gate de nivel");
         }

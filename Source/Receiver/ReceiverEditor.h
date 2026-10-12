@@ -39,10 +39,9 @@ public:
 
 private:
     void timerCallback() override;
-    void refreshModelList();
+    void refreshModoUi();
     void applyIdentityFromUi();
     void loadIdentityToUi();
-    void showNetwork();
     void showQr();
     juce::String urlDoDisplay() const;
     void showLog();
@@ -54,13 +53,13 @@ private:
     tl::LogoBadge logo;
 
     juce::Label        statusLabel, speechLabel, lastLineLabel;
-    juce::Label        nameLabel, importanceLabel, modelLabel, gateLabel, vadLabel, holdLabel;
+    juce::Label        nameLabel, importanceLabel, modoLabel, gateLabel, vadLabel, holdLabel;
     juce::TextEditor   nameEditor;
-    juce::TextButton   colourButton { "Cor" }, networkButton { "Rede..." },
+    juce::TextButton   colourButton { "Cor" },
                        licenseButton { juce::String (juce::CharPointer_UTF8 ("Licen\xc3\xa7" "a")) },
                        logButton { "Log" },
                        qrButton { "QR" };
-    juce::ComboBox     importanceBox, modelBox;
+    juce::ComboBox     importanceBox, modoBox;
     juce::ToggleButton flashButton { "Flash" }, partialsButton { "Parciais" };
     LevelMeter         meter;
     juce::Slider       gateSlider, vadSlider, holdSlider;
@@ -70,8 +69,6 @@ private:
     std::unique_ptr<APVTS::SliderAttachment> gateAttachment, holdAttachment, vadAttachment;
     std::unique_ptr<APVTS::ButtonAttachment> partialsAttachment;
 
-    juce::StringArray lastModelList;
-    juce::uint32 lastModelScan = 0;
     int  lastLinesVersion = -1;
     bool licensePanelOpen = false;
     bool lastLicensed = false;

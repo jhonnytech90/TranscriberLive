@@ -1,0 +1,75 @@
+#!/bin/bash
+#
+# Transcriber Live — pre-instalacao (macOS)
+#
+# Roda ANTES de o payload ser copiado. Remove a instalacao anterior inteira,
+# para que a nova nao seja escrita por cima da velha.
+#
+# Por que isto existe: o .pkg sobrepoe arquivo por arquivo dentro do bundle.
+# Se uma versao nova tem menos arquivos que a antiga -- um recurso que saiu,
+# uma lib que deixou de ser usada -- o arquivo velho FICA la dentro, e o bundle
+# passa a ser uma mistura das duas versoes. Isso da defeito que nao se explica
+# e que some quando o cliente desinstala e instala de novo.
+#
+# O QUE NAO E REMOVIDO, de proposito:
+#
+#   - a licenca do cliente (ela e presa a maquina; apagar significaria pedir
+#     outra ao desenvolvedor a cada atualizacao);
+#   - as preferencias do plugin (nome do canal, cor, gate...) -- resetar a
+#     configuracao de quem so quis atualizar seria hostil;
+#   - a pasta de modelos. O payload reescreve os modelos que ele traz, e
+#     apagar a pasta levaria junto qualquer ggml-*.bin que o cliente tenha
+#     copiado para la por conta propria. "Arquivo sobre arquivo" e um problema
+#     de BUNDLE, nao de arquivo de dados solto.
+#
+# Log: /private/tmp/transcriberlive-install.log
+#
+LOG="/private/tmp/transcriberlive-install.log"
+exec >> "$LOG" 2>&1
+echo ""
+echo "=== Transcriber Live — limpeza antes de instalar, $(date '+%Y-%m-%d %H:%M:%S') ==="
+
+# Se um host estiver com o plugin carregado, o arquivo some mas a memoria so e
+# liberada quando ele fechar. Avisamos; o postinstall avisa de novo no fim.
+ABERTOS=""
+for app in "SuperRack Performer" "SuperRack" REAPER "Live Professor" Logic MainStage "Ableton Live"; do
+    /usr/bin/pgrep -x "$app" >/dev/null 2>&1 && ABERTOS="$ABERTOS $app"
+done
+[ -n "$ABERTOS" ] && echo "AVISO: abertos durante a instalacao:$ABERTOS"
+
+removidos=0
+tira() {
+    [ -e "$1" ] || return 0
+    if /bin/rm -rf "$1"; then
+        echo "removido: $1"; removidos=$((removidos+1))
+    else
+        echo "ERRO ao remover: $1"
+        echo "ERRO: a versao nova pode ficar misturada com a antiga."
+    fi
+}
+
+# instalacao do sistema
+tira "/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3"
+tira "/Library/Audio/Plug-Ins/VST3/Transcriber Live Display.vst3"
+tira "/Library/Audio/Plug-Ins/Components/Transcriber Live Receiver.component"
+tira "/Library/Audio/Plug-Ins/Components/Transcriber Live Display.component"
+tira "/Applications/Transcriber Live Display.app"
+
+# instalacao antiga na pasta do usuario (instaladores ate setembro/2026)
+U=$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
+if [ -n "$U" ] && [ "$U" != "root" ]; then
+    CASA=$(/usr/bin/dscl . -read "/Users/$U" NFSHomeDirectory 2>/dev/null | /usr/bin/awk '{print $2}')
+    if [ -n "$CASA" ] && [ -d "$CASA" ]; then
+        tira "$CASA/Library/Audio/Plug-Ins/VST3/Transcriber Live Receiver.vst3"
+        tira "$CASA/Library/Audio/Plug-Ins/VST3/Transcriber Live Display.vst3"
+        tira "$CASA/Library/Audio/Plug-Ins/Components/Transcriber Live Receiver.component"
+        tira "$CASA/Library/Audio/Plug-Ins/Components/Transcriber Live Display.component"
+    fi
+fi
+
+echo "$removidos item(ns) da instalacao anterior removido(s)."
+echo "=== fim da limpeza ==="
+
+# Nunca derruba a instalacao: se a limpeza falhar, instalar por cima ainda e
+# melhor do que nao instalar nada. O log registra o que ficou.
+exit 0
