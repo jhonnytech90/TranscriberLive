@@ -141,8 +141,11 @@ inline juce::String detalheModo (Modo m)
         case Modo::automatico:
         default:
             return juce::String (juce::CharPointer_UTF8 (
-                "Comeca no melhor que esta m\xc3\xa1quina aguenta e alivia sozinho "
-                "se come\xc3\xa7ar a atrasar. Na d\xc3\xbavida, deixe neste."));
+                // "Come" + c-cedilha + "a": o literal e cortado porque o escape
+                // do cedilha seguido da letra "a" seria lido como um escape de
+                // tres digitos, que estoura o byte e nao compila no MSVC.
+                "Come\xc3\xa7" "a no melhor que esta m\xc3\xa1quina aguenta e alivia "
+                "sozinho se come\xc3\xa7" "ar a atrasar. Na d\xc3\xbavida, deixe neste."));
     }
 }
 

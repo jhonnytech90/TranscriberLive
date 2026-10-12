@@ -34,6 +34,20 @@ jobs:
       # lentidao dispara a troca automatica de modelo e o modo economico.
       # Um build sem SIMD nao pode mais sair daqui calado.
       # -----------------------------------------------------------------------
+      # Escape hexadecimal grudado num digito hex: "\xc3\xa7" seguido de "a" vira
+      # "\xa7a", que o MSVC recusa ("escape sequence out of range"). O clang
+      # aceita e trunca calado, entao isto so aparecia no build do Windows,
+      # depois de tres minutos de compilacao. Um grep de dois segundos resolve.
+      - name: Escape hexadecimal grudado em digito (texto em portugues)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -rnP '\\x[0-9a-fA-F]{2}(?=[0-9a-fA-F])' Source Tests --include='*.h' --include='*.cpp'; then
+            echo "::error::escape hexadecimal seguido de digito hex -- corte o literal: \"...\\xc3\\xa7\" \"a...\""
+            exit 1
+          fi
+          echo "nenhum escape ambiguo"
+
       - name: Configure (Windows)
         if: matrix.os == 'windows-2022'
         shell: bash
