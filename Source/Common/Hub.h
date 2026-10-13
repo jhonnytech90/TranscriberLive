@@ -63,14 +63,20 @@ namespace tl
         int  getWebClients() const         { return web.getNumClients(); }
         bool isMirroring() const noexcept  { return mirroring.load(); }
 
+        /*  UM endereco, o melhor da lista -- nao dois.
+
+            Mostrar "A ou B" parecia gentil e nao era: o Receiver desenhava o QR
+            com o primeiro da lista e o Display anunciava os dois, entao a mesma
+            maquina exibia enderecos diferentes em duas janelas e o cliente
+            concluia, com razao, que havia algo errado. Agora os dois perguntam
+            a mesma funcao e dizem a mesma coisa.
+
+            Quem tem varias redes troca pelo botao no painel do QR.           */
         juce::String getWebAddressHint() const
         {
-            auto ips = HttpServer::getLocalAddresses();
-            if (ips.isEmpty()) return "sem rede";
-            juce::String s;
-            for (int i = 0; i < juce::jmin (2, ips.size()); ++i)
-                s += (i ? "  ou  " : "") + juce::String ("http://") + ips[i] + ":" + juce::String (httpPort);
-            return s;
+            const auto ip = HttpServer::melhorEndereco();
+            if (ip.isEmpty()) return "sem rede";
+            return "http://" + ip + ":" + juce::String (httpPort);
         }
 
         //-- escrita pelos celulares ------------------------------------------------
@@ -194,6 +200,8 @@ namespace tl
         }
 
     private:
+        bool redesRegistradas = false;
+
         static const char* pageHtml();
         static int pageHtmlSize();
 
@@ -208,6 +216,20 @@ namespace tl
 
             if (web.isRunning())
             {
+                /*  Registra as redes desta maquina assim que viramos primario.
+
+                    O log nao dizia nada sobre rede, e foi exatamente isso que
+                    faltou num chamado: o cliente via o QR apontar para um IP
+                    publico da Amazon (VPN ligada) e nao havia como saber disso
+                    sem estar na frente da maquina. Agora o Log conta.
+                    Uma vez por processo: isto nao e para virar enxurrada.   */
+                if (! redesRegistradas)
+                {
+                    redesRegistradas = true;
+                    TL_LOGI ("rede", "enderecos desta maquina: " + HttpServer::enderecosParaLog());
+                    TL_LOGI ("rede", "o QR vai usar: " + getWebAddressHint());
+                }
+
                 if (! listener.isBound())
                 {
                     listener.start (busPort);

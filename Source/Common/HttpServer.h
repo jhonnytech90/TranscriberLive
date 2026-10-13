@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include <algorithm>
 #include "MessageStore.h"
 #include "SocketSafety.h"
 #include "Log.h"
@@ -106,7 +107,50 @@ namespace tl
         int  getPort()   const noexcept { return boundPort; }
         int  getNumClients() const { const juce::ScopedLock sl (connLock); return connections.size(); }
 
-        /** IPs locais (para mostrar "abra http://x.x.x.x:porta" na UI). */
+        /*  Quao bom e este endereco para o celular do pessoal alcancar.
+            Menor e melhor.
+
+            Isto existe por um chamado real: a maquina do cliente tinha uma VPN
+            ligada, e o primeiro endereco da lista era 54.232.189.113 -- um IP
+            PUBLICO da Amazon. O QR apontava para la, o celular tentava abrir um
+            servidor que nao existe e ficava na tela preta. O endereco certo,
+            192.168.0.6, era o segundo.
+
+            Por que nao perguntar a tabela de rotas qual IP a maquina usa para
+            sair: nesse mesmo caso a resposta seria o da VPN, que e quem tem a
+            rota padrao. O criterio que vale aqui nao e "por onde eu saio para a
+            internet", e "qual endereco meu o celular na mesma sala alcanca" --
+            e esse e sempre um endereco de rede local.                        */
+        static int notaDoEndereco (const juce::String& ip)
+        {
+            const bool e192 = ip.startsWith ("192.168.");
+            const bool e10  = ip.startsWith ("10.");
+            bool e172 = false;
+            if (ip.startsWith ("172."))
+            {
+                const int seg = ip.fromFirstOccurrenceOf (".", false, false).getIntValue();
+                e172 = seg >= 16 && seg <= 31;
+            }
+
+            // Faixas que existem na maquina mas nao levam a lugar nenhum util:
+            // sao redes de maquina virtual, so entre o host e a VM.
+            const bool virtual_ =
+                   ip.startsWith ("10.211.55.")    // Parallels
+                || ip.startsWith ("10.37.129.")    // Parallels
+                || ip.startsWith ("192.168.56.")   // VirtualBox (host-only)
+                || ip.startsWith ("172.17.")       // Docker
+                || ip.startsWith ("172.18.")       // Docker
+                || ip.startsWith ("25.");          // Hamachi
+
+            if (virtual_)            return 50;
+            if (e192)                return 0;    // a faixa mais comum em casa e em palco
+            if (e172)                return 1;
+            if (e10)                 return 2;
+            if (ip.startsWith ("100.")) return 60;  // CGNAT/Tailscale: nao e a rede da sala
+            return 90;                              // publico: VPN, tunel. Nunca e o certo.
+        }
+
+        /** IPs desta maquina, O MELHOR PRIMEIRO (ver notaDoEndereco). */
         static juce::StringArray getLocalAddresses()
         {
             static juce::CriticalSection lock;
@@ -121,9 +165,38 @@ namespace tl
                 for (auto& a : juce::IPAddress::getAllAddresses (false))
                     if (a != juce::IPAddress::local() && ! a.isIPv6 && ! a.toString().startsWith ("169.254"))
                         cached.add (a.toString());
+
+                // stable_sort: entre dois enderecos igualmente bons, mantem a
+                // ordem do sistema, que costuma por a interface ativa antes.
+                std::stable_sort (cached.strings.begin(), cached.strings.end(),
+                                  [] (const juce::String& a, const juce::String& b)
+                                  { return notaDoEndereco (a) < notaDoEndereco (b); });
                 cachedAt = now;
             }
             return cached;
+        }
+
+        /** O endereco que a interface deve mostrar e o QR deve usar. Vazio se
+            a maquina nao tem rede nenhuma. */
+        static juce::String melhorEndereco()
+        {
+            const auto ips = getLocalAddresses();
+            return ips.isEmpty() ? juce::String() : ips[0];
+        }
+
+        /** "192.168.0.6 (local)  |  54.232.189.113 (publico, descartado)" --
+            para o log, que e o que o suporte le quando o cliente reclama. */
+        static juce::String enderecosParaLog()
+        {
+            juce::String s;
+            for (auto& ip : getLocalAddresses())
+            {
+                const int n = notaDoEndereco (ip);
+                s << (s.isEmpty() ? "" : "  |  ") << ip << " ("
+                  << (n >= 90 ? "publico" : n >= 60 ? "fora da rede local"
+                      : n >= 50 ? "maquina virtual" : "rede local") << ")";
+            }
+            return s.isEmpty() ? juce::String ("nenhum") : s;
         }
 
     private:

@@ -70,6 +70,12 @@ private:
     std::unique_ptr<APVTS::ButtonAttachment> partialsAttachment;
 
     int  lastLinesVersion = -1;
+    /*  Qual dos enderecos desta maquina vai no QR.
+
+        Quase sempre 0 (o melhor da lista). Existe para a maquina com duas
+        redes -- cabo e Wi-Fi, ou uma VPN ligada -- em que a escolhida nao e a
+        do celular do pessoal. O botao no painel do QR gira entre elas.      */
+    int  enderecoEscolhido = 0;
     bool licensePanelOpen = false;
     bool lastLicensed = false;
 

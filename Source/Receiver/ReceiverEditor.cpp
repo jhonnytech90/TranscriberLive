@@ -442,7 +442,10 @@ juce::String TranscriberLiveAudioProcessorEditor::urlDoDisplay() const
     if (ips.isEmpty())
         return {};
 
-    juce::String url = "http://" + ips[0] + ":" + juce::String (processor.hub->getHttpPort()) + "/";
+    // A lista ja vem com o melhor endereco primeiro (rede local antes de VPN e
+    // de maquina virtual). O indice so sai de zero se o tecnico trocar na mao.
+    const int i = juce::jlimit (0, ips.size() - 1, enderecoEscolhido);
+    juce::String url = "http://" + ips[i] + ":" + juce::String (processor.hub->getHttpPort()) + "/";
 
     // O codigo de escrita viaja DENTRO do QR. E o que separa quem apontou a
     // camera de quem so descobriu o endereco na rede: o primeiro escreve, o
@@ -469,6 +472,8 @@ void TranscriberLiveAudioProcessorEditor::showQr()
         juce::ToggleButton escrever { juce::String (juce::CharPointer_UTF8 (
                                "Celulares podem escrever")) };
         juce::TextButton   novoCodigo { juce::String (juce::CharPointer_UTF8 ("Trocar c\xc3\xb3" "digo")) };
+        juce::TextButton   outraRede;
+        bool               temOutraRede = false;
         tl::QrCode         qr;
         bool               temQr = false;
 
@@ -491,6 +496,12 @@ void TranscriberLiveAudioProcessorEditor::showQr()
             areaQr = r.removeFromTop (190);
             r.removeFromTop (8);
             endereco.setBounds (r.removeFromTop (20));
+            if (temOutraRede)
+            {
+                r.removeFromTop (4);
+                outraRede.setBounds (r.removeFromTop (24));
+            }
+            r.removeFromTop (2);
             aviso.setBounds (r.removeFromTop (44));
             r.removeFromTop (4);
             escrever.setBounds (r.removeFromTop (24));
@@ -508,13 +519,35 @@ void TranscriberLiveAudioProcessorEditor::showQr()
                                                             &p->copiar, &p->escrever, &p->novoCodigo })
         p->addAndMakeVisible (c);
 
+    /*  Trocar de rede.
+
+        Chamado real: a maquina do cliente tinha VPN ligada e a lista comecava
+        por um IP PUBLICO da Amazon. O QR apontava para la e o celular ficava na
+        tela preta. A ordenacao agora poe a rede local na frente, mas quem tem
+        cabo E Wi-Fi ainda pode ter a escolhida errada -- e so a pessoa na sala
+        sabe em qual rede o celular esta. Entao: escolhemos bem, e deixamos
+        trocar.                                                              */
+    const auto todosIps = tl::HttpServer::getLocalAddresses();
+    p->temOutraRede = todosIps.size() > 1;
+
+    if (p->temOutraRede)
+    {
+        const int atual = juce::jlimit (0, todosIps.size() - 1, enderecoEscolhido);
+        p->outraRede.setButtonText (juce::String (juce::CharPointer_UTF8 ("Outra rede ("))
+                                    + juce::String (atual + 1) + " de " + juce::String (todosIps.size()) + ")");
+        p->outraRede.setTooltip (juce::String (juce::CharPointer_UTF8 (
+            "Esta mÃ¡quina tem mais de uma rede. Se o celular nÃ£o abrir a pÃ¡gina, "
+            "troque aqui atÃ© achar a rede em que ele estÃ¡.")));
+        p->addAndMakeVisible (p->outraRede);
+    }
+
     p->titulo.setJustificationType (juce::Justification::centred);
     p->endereco.setJustificationType (juce::Justification::centred);
     p->endereco.setFont (juce::FontOptions (13.0f, juce::Font::bold));
     p->aviso.setJustificationType (juce::Justification::centredTop);
     p->aviso.setFont (juce::FontOptions (11.0f));
     p->aviso.setColour (juce::Label::textColourId, tl::col::dim);
-    p->setSize (270, 390);
+    p->setSize (270, 390);   // +30 quando ha botao de trocar de rede (abaixo)
 
     // ---- chave geral da escrita --------------------------------------------
     // Fica aqui, junto do QR, porque e a mesma decisao: quem pode escrever no
@@ -534,6 +567,17 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     {
         if (safeQr == nullptr) return;
         safeQr->processor.hub->setEscritaPermitida (p->escrever.getToggleState());
+    };
+
+    p->outraRede.onClick = [safeQr, p]
+    {
+        if (safeQr == nullptr) return;
+        const auto ips = tl::HttpServer::getLocalAddresses();
+        if (ips.size() > 1)
+            safeQr->enderecoEscolhido = (safeQr->enderecoEscolhido + 1) % ips.size();
+
+        if (auto* box = p->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
+        safeQr->showQr();
     };
 
     p->novoCodigo.onClick = [safeQr, p]
@@ -571,6 +615,7 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     else
     {
         p->temQr = true;
+        if (p->temOutraRede) p->setSize (270, 420);
         const auto id = processor.getIdentity();
         const bool temCodigo = url.contains ("?k=");
 
