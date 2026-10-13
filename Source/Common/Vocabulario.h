@@ -48,15 +48,21 @@ public:
     void recarregar();
 
     int  getNumAcentos()   const noexcept { return acentos.size(); }
+
+    /** A lista crua, para o teste conferir que nenhuma entrada e inutil. */
+    const juce::StringArray& getAcentos() const noexcept { return acentos; }
     bool carregouDoDisco() const noexcept { return veioDoDisco; }
+
+    /** minusculas, sem acento, sem pontuacao -- a forma em que as comparacoes
+        acontecem. A grafia bonita fica em `acentos`. Publica porque o teste
+        usa a MESMA funcao para conferir a lista: se ele reimplementasse a
+        regra, os dois poderiam discordar e o teste passaria errado. */
+    static juce::String normalizar (const juce::String& s);
 
 private:
     Vocabulario();
     void parse (const juce::String& conteudo);
 
-    /** minusculas, sem acento, sem pontuacao -- a forma em que as comparacoes
-        acontecem. A grafia bonita fica em `acentos`. */
-    static juce::String normalizar (const juce::String& s);
     static int distancia (const juce::String& a, const juce::String& b, int teto);
 
     juce::StringArray linhasPrompt;

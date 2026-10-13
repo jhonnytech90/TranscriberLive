@@ -247,6 +247,19 @@ jobs:
                --latest=false
           gh release upload windows-latest Instalador/Windows/saida/*.exe --clobber
 
+          # O nome do arquivo passou a levar a versao, entao "--clobber" nao
+          # sobrescreve mais nada: a Release acumularia um .exe por versao e o
+          # cliente que entrasse na pagina escolheria no chute -- varias vezes o
+          # antigo, que esta acima na lista. Fica so a versao deste build.
+          VER=$(tr -d ' \n\r' < VERSAO)
+          gh release view windows-latest --json assets -q '.assets[].name' | while read -r A; do
+            case "$A" in
+              *"-$VER-"*|*"-$VER."*) ;;
+              "") ;;
+              *) gh release delete-asset windows-latest "$A" -y && echo "removido da Release: $A" ;;
+            esac
+          done
+
           # mesmo motivo do macOS: a pagina mostraria a data da tag, nao a do arquivo
           gh release edit windows-latest \
             --title "Transcriber Live $(tr -d ' \n\r' < VERSAO) - Windows ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
@@ -417,6 +430,19 @@ jobs:
                --notes "Instalador e desinstalador do macOS, gerados automaticamente a cada build. Os modelos de voz ja vem embutidos (Maxima precisao e Mais rapido): o cliente nao baixa nada." \
                --latest=false
           gh release upload macos-latest Instalador/saida/*.pkg --clobber
+
+          # O nome do arquivo passou a levar a versao, entao "--clobber" nao
+          # sobrescreve mais nada: a Release acumularia um .pkg por versao e o
+          # cliente que entrasse na pagina escolheria no chute -- varias vezes o
+          # antigo, que esta acima na lista. Fica so a versao deste build.
+          VER=$(tr -d ' \n\r' < VERSAO)
+          gh release view macos-latest --json assets -q '.assets[].name' | while read -r A; do
+            case "$A" in
+              *"-$VER-"*|*"-$VER."*) ;;
+              "") ;;
+              *) gh release delete-asset macos-latest "$A" -y && echo "removido da Release: $A" ;;
+            esac
+          done
 
           # A release reaproveita a mesma tag, entao a PAGINA continua mostrando
           # a data em que a tag foi criada -- e da a impressao de que o arquivo

@@ -37,131 +37,25 @@ mesa, canal, mix, voz, violão, guitarra, baixo, bateria, teclado, sanfona,
 sobe, abaixa, tira, corta, liga, desliga, aumenta, diminui, passagem de som.
 
 [acentos]
+# NOTA: esta secao so aceita entradas que mudem alguma coisa -- palavra com
+# acento ou com maiuscula propria. Palavra que ja se escreve em minuscula e sem
+# acento ("palco", "backline", "monitor") NAO entra aqui: nao e que o plugin
+# nao conheca, e que nao ha nada para corrigir nela. Entrada com espaco tambem
+# nao entra: a comparacao e palavra por palavra. O teste VocabQrTest recusa as
+# duas coisas.
 # --- palco, backstage e equipamento -----------------------------------------
-retorno
-monitor
-in-ear
-ponto eletrônico
-side fill
 praticável
-coxia
-camarim
-backline
-palco
-plateia
-casa
-camarote
-mesa de som
-console
-canal
-subgrupo
-auxiliar
-mix
-fader
-ganho
-gain
-mute
-solo
-PFL
 equalização
-grave
 médio
-agudo
-compressor
-gate
-reverb
-delay
-efeito
-microfonia
-vazamento
-phantom
-direct box
-cabo XLR
-cabo P10
-medley
-passagem de som
-soundcheck
-setlist
 repertório
-playback
-clique
 metrônomo
-guia
-virada
 refrão
-ponte
 introdução
-bis
-abertura
-encerramento
 # --- instrumentos e vozes ---------------------------------------------------
 violão
-viola
-cavaco
-cavaquinho
-guitarra
-baixo
-bateria
-bumbo
-caixa
-chimbal
-surdo
-pratos
-overhead
 percussão
-pandeiro
-tamborim
-repique
-sanfona
-acordeon
-teclado
-piano
-saxofone
-trompete
-trombone
-vocal
-backing vocal
-coro
 # --- girias e expressoes brasileiras de uso comum ---------------------------
-beleza
-tranquilo
-suave
-firmeza
-valeu
-manda ver
-bora
-partiu
-massa
-maneiro
-show de bola
-da hora
-tamo junto
-fechou
-demorou
-pode crer
-tá ligado
-sacou
-mano
-parceiro
-meu irmão
-galera
-molecada
-rapaziada
-pessoal
-gente
-caramba
-poxa
-eita
-uai
-oxe
-vixe
-arretado
-danado
-sinistro
-pegada
-gás
 raça
-garra
 # --- nomes masculinos comuns no Brasil --------------------------------------
 João
 José
@@ -260,7 +154,6 @@ Washington
 Willian
 # --- nomes femininos comuns no Brasil ---------------------------------------
 Maria
-Ana
 Francisca
 Antônia
 Adriana
@@ -330,3 +223,230 @@ Valéria
 Vânia
 Viviane
 Yasmin
+
+# ===========================================================================
+# ACRESCENTADO EM 13/10/2026
+#
+# O que entra aqui e o que o corretor consegue consertar: palavras cuja
+# GRAFIA sai errada mas as LETRAS saem certas -- acento e maiuscula. Entao
+# "shure" vira "Shure" e "equalizacao" vira "equalizacao" com cedilha e til.
+#
+# O que NAO entra, porque nao faria nada:
+#   - entrada com espaco ("mesa de som"): o corretor compara palavra por
+#     palavra, e nenhuma entrada com espaco chega a ser comparada;
+#   - palavra com menos de 4 letras: e o piso do corretor;
+#   - palavra que ja e minuscula e sem acento ("palco", "backline"): a
+#     correcao produziria exatamente o que ja esta escrito.
+#
+# E o que NUNCA pode entrar: grafia que eu nao tenha certeza. Uma entrada
+# escrita errada faz o plugin escrever errado de proposito -- "Juliana" com
+# acento inventado apareceria assim no telao, toda vez.
+# ===========================================================================
+
+# --- marcas de audio: a grafia e as maiusculas que a marca usa ---
+Ableton
+Adamson
+Antares
+Antelope
+Apogee
+Arturia
+Audix
+Avalon
+Behringer
+Beyerdynamic
+Bitwig
+Canare
+Chandler
+Ciclotron
+Crown
+Cubase
+Denon
+DiGiCo
+Digidesign
+Dixon
+Dynacord
+Dynaudio
+Earthworks
+Electro-Voice
+Evans
+Eventide
+FabFilter
+Fender
+Focusrite
+Genelec
+Giannini
+Gibson
+Gretsch
+Harman
+Hayonik
+Ibanez
+Kontakt
+Lectrosonics
+Leson
+Lexicon
+Ludwig
+Mackie
+Manley
+Mapex
+Meinl
+Melodyne
+Meyer
+Midas
+Mogami
+Moog
+Neumann
+Neutrik
+Nexo
+Nuendo
+Numark
+Odery
+Oneal
+Paiste
+Palmer
+Pioneer
+Powersoft
+PreSonus
+Radial
+Riedel
+Roland
+Sabian
+Sennheiser
+Serato
+Shure
+Sonnox
+Sonor
+Soundcraft
+Soundtoys
+Studiomaster
+Switchcraft
+Tagima
+Takamine
+Telefunken
+Turbosound
+Wattsom
+Waves
+Whirlwind
+Wisycom
+Yamaha
+Zildjian
+
+# --- instrumentos e percussao com acento ---
+acordeão
+afoxé
+agogô
+bongô
+cajón
+órgão
+triângulo
+xequerê
+
+# --- termos tecnicos com acento ---
+acústica
+acústico
+alimentação
+amplificação
+atenuação
+áudio
+captação
+compressão
+decibéis
+difusão
+dinâmica
+dispersão
+distorção
+elétrica
+elétrico
+eletrônica
+eletrônico
+estéreo
+estereofônico
+expansão
+frequência
+frequências
+gráfico
+híbrido
+impedância
+latência
+médios
+modulação
+monofônico
+paramétrica
+paramétrico
+potência
+pré-amplificador
+realimentação
+reverberação
+ruído
+saturação
+sincronização
+sonorização
+tensão
+válvula
+vídeo
+
+# --- backstage e producao com acento ---
+afinação
+alvará
+área
+cachê
+capacitação
+cenário
+crachá
+direção
+extensão
+fumaça
+iluminação
+máquina
+monofásico
+produção
+régua
+saída
+segurança
+técnica
+técnico
+treliça
+trifásico
+
+# --- nomes proprios brasileiros com acento ---
+Ângela
+Ângelo
+Cássia
+Cássio
+Cláudia
+Cláudio
+Eliézer
+Elói
+Emília
+Érica
+Érico
+Estêvão
+Fabíola
+Fernandão
+Gláucia
+Heloísa
+Inácio
+Isaías
+Ítalo
+Jairzinho
+Jânio
+Joãozinho
+Josué
+Júnior
+Luíza
+Luizão
+Márcio
+Marília
+Mário
+Nádia
+Núbia
+Péricles
+Raíssa
+Régis
+Renê
+Rômulo
+Sílvia
+Tâmara
+Thaís
+Toninho
+Verônica
+Vítor

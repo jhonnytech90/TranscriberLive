@@ -64,6 +64,51 @@ static void testeVocabulario()
     corrige ("ele falou que o publico estava bom", "ele falou que o publico estava bom");
     corrige ("coloca mais peso na bateria",        "coloca mais peso na bateria");
 
+    /*  Nenhuma entrada inutil na lista.
+
+        Tres jeitos de uma entrada nao fazer nada, e os tres ja estavam no
+        arquivo sem ninguem perceber:
+
+          - com espaco: o corretor compara PALAVRA por palavra, entao
+            "mesa de som" nunca chega a ser comparada com nada;
+          - com menos de 4 letras: e o piso do proprio corretor;
+          - igual a forma normalizada ("palco", "backline"): a correcao
+            produziria exatamente o que ja esta escrito.
+
+        Sem este teste a lista cresce e da a impressao de estar fazendo um
+        trabalho que nao faz.                                                */
+    {
+        juce::StringArray comEspaco, curtas, semEfeito;
+        juce::StringArray vistas;
+
+        for (const auto& e : v.getAcentos())
+        {
+            const auto n = tl::Vocabulario::normalizar (e);
+
+            if (e.containsChar (' '))        comEspaco.add (e);
+            else if (n.length() < 4)         curtas.add (e);
+            else if (e == n)                 semEfeito.add (e);
+
+            checa (! vistas.contains (n), "entrada repetida na lista: " + e);
+            vistas.add (n);
+        }
+
+        checa (comEspaco.isEmpty(),
+               "entrada com espaco nunca e comparada: " + comEspaco.joinIntoString (", "));
+        checa (curtas.isEmpty(),
+               "entrada com menos de 4 letras e ignorada pelo corretor: " + curtas.joinIntoString (", "));
+        checa (semEfeito.isEmpty(),
+               "entrada ja igual ao normalizado nao corrige nada: " + semEfeito.joinIntoString (", "));
+    }
+
+    // Marca com maiuscula propria: o corretor conserta caixa, nao so acento.
+    corrige ("coloca o shure no vocal",            "coloca o Shure no vocal");
+    corrige ("a mesa e uma soundcraft",            "a mesa e uma Soundcraft");
+
+    // "publico" tambem e verbo ("eu publico um aviso"); por "publico" na lista
+    // faria o plugin acentuar o verbo. Fica de fora de proposito.
+    corrige ("eu publico o aviso amanha",          "eu publico o aviso amanha");
+
     // ---- prompt --------------------------------------------------------------
     const auto p = v.montarPrompt();
     checa (p.isNotEmpty(), "o prompt de dominio ficou vazio");
