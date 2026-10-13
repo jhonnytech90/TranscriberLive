@@ -21,7 +21,18 @@
 ; ============================================================================
 
 #define AppName        "Transcriber Live"
-#define AppVersion     "0.4"
+; A versao vem do arquivo VERSAO, na raiz do repositorio -- o mesmo que o
+; CMake le. /DAPPVERSION=1.2 tem prioridade (e o que o CI passa).
+#ifdef APPVERSION
+  #define AppVersion APPVERSION
+#else
+  #define VersaoHandle FileOpen(SourcePath + "\..\..\VERSAO")
+  #if VersaoHandle == 0
+    #error Nao achei o arquivo VERSAO na raiz do repositorio.
+  #endif
+  #define AppVersion Trim(FileRead(VersaoHandle))
+  #expr FileClose(VersaoHandle)
+#endif
 #define AppPublisher   "Jhonatan Miikael"
 #define AppSupport     "jhonyfascpinda@gmail.com"
 ; O GUID aparece em dois lugares: no AppId (onde o Inno exige "{{" para

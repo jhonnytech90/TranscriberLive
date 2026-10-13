@@ -222,7 +222,9 @@ jobs:
         shell: pwsh
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc "/DBIN=$(Resolve-Path binarios)" Instalador\Windows\TranscriberLive.iss
+          $ver = (Get-Content VERSAO -Raw).Trim()
+          Write-Host "versao: $ver"
+          & $iscc "/DAPPVERSION=$ver" "/DBIN=$(Resolve-Path binarios)" Instalador\Windows\TranscriberLive.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC falhou ($LASTEXITCODE)" }
 
       - name: Upload
@@ -247,7 +249,7 @@ jobs:
 
           # mesmo motivo do macOS: a pagina mostraria a data da tag, nao a do arquivo
           gh release edit windows-latest \
-            --title "Transcriber Live - Windows ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
+            --title "Transcriber Live $(tr -d ' \n\r' < VERSAO) - Windows ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
             --notes "Instalador do Windows, gerado automaticamente.
 
           **Atualizado em:** $(date -u '+%d/%m/%Y as %H:%M') UTC
@@ -322,7 +324,11 @@ jobs:
         env:
           TL_NAO_INTERATIVO: "1"
         run: |
+          # Mesma versao que o CMake compilou: os dois leem o arquivo VERSAO.
+          export TL_VERSAO="$(tr -d ' \n\r' < VERSAO)"
+          echo "versao: $TL_VERSAO"
           chmod +x Instalador/montar-instalador.command \
+                   Instalador/scripts/preinstall \
                    Instalador/scripts/postinstall \
                    Instalador/desinstalador/scripts/postinstall
           Instalador/montar-instalador.command "$PWD/Instalador/binarios" "$PWD/Instalador/modelos"
@@ -417,7 +423,7 @@ jobs:
           # e velho, mesmo tendo acabado de ser trocado. Reescrevemos titulo e
           # texto a cada build para a data e o commit ficarem visiveis.
           gh release edit macos-latest \
-            --title "Transcriber Live - macOS ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
+            --title "Transcriber Live $(tr -d ' \n\r' < VERSAO) - macOS ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
             --notes "Instalador e desinstalador do macOS, gerados automaticamente.
 
           **Atualizado em:** $(date -u '+%d/%m/%Y as %H:%M') UTC
@@ -435,3 +441,49 @@ jobs:
           name: TranscriberLive-macOS-Desinstalador
           path: Instalador/saida/*Desinstalador.pkg
           retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Soma 1 ao numero menor da versao, depois de os dois instaladores saírem.
+  #
+  # Roda por ultimo e so se os dois publicaram: build que falhou nao gasta
+  # numero de versao, senao a numeracao viraria contagem de tentativa.
+  #
+  # O "[skip ci]" na mensagem e o que impede o laco infinito -- sem ele este
+  # push dispararia outro build, que faria outro push, para sempre.
+  # ---------------------------------------------------------------------------
+  proxima-versao:
+    needs: [installer-macos, installer-windows]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Soma 1 ao numero menor
+        run: |
+          set -euo pipefail
+          ATUAL=$(tr -d ' \n\r' < VERSAO)
+          MAIOR=${ATUAL%%.*}
+          MENOR=${ATUAL##*.}
+          PROXIMA="$MAIOR.$((MENOR + 1))"
+          echo "$ATUAL publicada -> proxima sera $PROXIMA"
+          printf '%s\n' "$PROXIMA" > VERSAO
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSAO
+          git commit -m "Versao $PROXIMA para o proximo build [skip ci]"
+
+          # Outro push pode ter entrado enquanto o build rodava. Rebase e uma
+          # tentativa a mais; falhar aqui NAO pode quebrar um build que ja
+          # publicou os instaladores.
+          for t in 1 2 3; do
+            git push && exit 0
+            echo "push recusado (tentativa $t); rebaseando"
+            git pull --rebase --autostash || true
+            sleep 3
+          done
+          echo "::warning::nao consegui gravar a proxima versao; o build seguinte repetiria $ATUAL"

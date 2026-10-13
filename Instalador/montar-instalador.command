@@ -24,7 +24,16 @@
 set -u
 cd "$(dirname "$0")" || exit 1
 
-VERSAO="0.4"
+# Vem do arquivo VERSAO na raiz do repositorio -- o mesmo que o CMake le.
+# TL_VERSAO no ambiente tem prioridade (o CI usa isso para nao depender de
+# onde este script foi chamado).
+VERSAO="${TL_VERSAO:-}"
+if [ -z "$VERSAO" ]; then
+    for CAND in "$(dirname "$0")/../VERSAO" "$(dirname "$0")/VERSAO" "./VERSAO"; do
+        [ -f "$CAND" ] && { VERSAO=$(tr -d ' \n\r' < "$CAND"); break; }
+    done
+fi
+[ -n "$VERSAO" ] || morre "nao achei o arquivo VERSAO (raiz do repositorio)."
 ID="com.jhonatanmiikael.transcriberlive"
 SAIDA="saida"
 LOTE="${TL_NAO_INTERATIVO:-0}"

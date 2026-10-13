@@ -1,5 +1,20 @@
 cmake_minimum_required(VERSION 3.22)
-project(TranscriberLive VERSION 0.3.0 LANGUAGES C CXX)
+# A versao mora no arquivo VERSAO, na raiz, e em lugar nenhum mais.
+#
+# Ja esteve escrita em quatro lugares (aqui, no app Display, no montador do
+# macOS e no .iss do Windows) e os quatro se desencontraram: o plugin dizia
+# 0.3.0 enquanto o instalador dizia 0.4. Um arquivo so, lido por todos.
+#
+# O build no GitHub Actions soma 1 ao numero menor depois de publicar, entao
+# cada compilacao sai com a sua propria versao.
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSAO" TL_VERSAO LIMIT_COUNT 1)
+string(STRIP "${TL_VERSAO}" TL_VERSAO)
+if(NOT TL_VERSAO MATCHES "^[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "VERSAO invalida: '${TL_VERSAO}' (esperado algo como 1.1)")
+endif()
+message(STATUS "Transcriber Live versao ${TL_VERSAO}")
+
+project(TranscriberLive VERSION ${TL_VERSAO} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -287,7 +302,7 @@ target_sources(TranscriberLiveDisplayApp PRIVATE
     ${TL_COMMON_SOURCES})
 
 target_include_directories(TranscriberLiveDisplayApp PRIVATE Source)
-target_compile_definitions(TranscriberLiveDisplayApp PRIVATE ${TL_COMMON_DEFS} TRANSCRIBER_DISPLAY_APP=1 JUCE_APPLICATION_NAME_STRING="Transcriber Live Display" JUCE_APPLICATION_VERSION_STRING="0.3.0")
+target_compile_definitions(TranscriberLiveDisplayApp PRIVATE ${TL_COMMON_DEFS} TRANSCRIBER_DISPLAY_APP=1 JUCE_APPLICATION_NAME_STRING="Transcriber Live Display" JUCE_APPLICATION_VERSION_STRING="${TL_VERSAO}")
 target_link_libraries(TranscriberLiveDisplayApp PRIVATE
     TranscriberDisplayData
     juce::juce_audio_utils
