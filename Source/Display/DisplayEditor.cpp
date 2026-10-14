@@ -334,13 +334,29 @@ void DisplayAudioProcessorEditor::showSettings()
     struct Panel : juce::Component
     {
         juce::Label l1 { {}, "Porta UDP (Receivers):" }, l2 { {}, "Porta web (celular):" };
-        juce::TextEditor bus, http;
+        juce::Label l3 { {}, "Outro computador (IP):" }, ajuda, situacao;
+        juce::TextEditor bus, http, parceiro;
         juce::ToggleButton webOn { "Servidor web ligado" };
         juce::TextButton apply { "Aplicar" };
         Panel()
         {
-            for (auto* c : std::initializer_list<juce::Component*> { &l1, &l2, &bus, &http, &webOn, &apply }) addAndMakeVisible (c);
-            setSize (300, 170);
+            for (auto* c : std::initializer_list<juce::Component*> {
+                     &l1, &l2, &l3, &ajuda, &situacao, &bus, &http, &parceiro, &webOn, &apply })
+                addAndMakeVisible (c);
+
+            ajuda.setFont (juce::FontOptions (11.0f));
+            ajuda.setColour (juce::Label::textColourId, tl::col::dim);
+            ajuda.setJustificationType (juce::Justification::topLeft);
+            ajuda.setText (juce::String (juce::CharPointer_UTF8 (
+                "Mostra aqui tamb\xc3\xa9m os Receivers daquele computador. Serve para o "
+                "t\xc3\xa9" "cnico de P.A. e o de monitor conversarem entre dois PCs: cada "
+                "um aponta para o outro. Deixe vazio para usar s\xc3\xb3 esta m\xc3\xa1quina.")),
+                juce::dontSendNotification);
+
+            situacao.setFont (juce::FontOptions (11.0f));
+            situacao.setJustificationType (juce::Justification::centredLeft);
+
+            setSize (320, 268);
         }
         void resized() override
         {
@@ -351,6 +367,10 @@ void DisplayAudioProcessorEditor::showSettings()
             r.removeFromTop (6);
             webOn.setBounds (r.removeFromTop (26));
             r.removeFromTop (10);
+            auto c = r.removeFromTop (26); l3.setBounds (c.removeFromLeft (170)); parceiro.setBounds (c);
+            situacao.setBounds (r.removeFromTop (16));
+            ajuda.setBounds (r.removeFromTop (52));
+            r.removeFromTop (6);
             apply.setBounds (r.removeFromTop (28));
         }
     };
@@ -360,12 +380,36 @@ void DisplayAudioProcessorEditor::showSettings()
     panel->http.setText (juce::String (processor.hub->getHttpPort()));
     panel->webOn.setVisible (false);
 
+    panel->parceiro.setText (processor.hub->getParceiro());
+    panel->parceiro.setTextToShowWhenEmpty ("ex.: 192.168.0.20", tl::col::dim);
+
+    {
+        const auto host = processor.hub->getParceiro();
+        const bool online = processor.hub->isParceiroOnline();
+        panel->situacao.setText (
+            host.isEmpty() ? juce::String()
+                           : (online ? juce::String (juce::CharPointer_UTF8 ("conectado a ")) + host
+                                     : juce::String (juce::CharPointer_UTF8 ("sem resposta de ")) + host),
+            juce::dontSendNotification);
+        panel->situacao.setColour (juce::Label::textColourId,
+                                   online ? juce::Colour (0xff3ddc84) : juce::Colour (0xffff6b6b));
+    }
+
     auto* raw = panel.get();
     juce::Component::SafePointer<DisplayAudioProcessorEditor> safe (this);
     raw->apply.onClick = [safe, raw]
     {
         if (safe == nullptr) return;
         safe->processor.hub->setPorts (raw->bus.getText().getIntValue(), raw->http.getText().getIntValue());
+
+        /*  So o endereco, sem "http://" nem porta: a porta e a mesma dos dois
+            lados (a web, configurada acima). O cliente cola o que estiver na
+            mao, entao limpamos o que daria para limpar em vez de recusar.    */
+        auto host = raw->parceiro.getText().trim()
+                        .fromLastOccurrenceOf ("/", false, false)
+                        .upToFirstOccurrenceOf (":", false, false)
+                        .trim();
+        safe->processor.hub->setParceiro (host);
         if (auto* box = raw->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
     };
 

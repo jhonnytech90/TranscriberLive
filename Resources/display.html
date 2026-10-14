@@ -84,7 +84,8 @@
            autocomplete="off" autocorrect="on" enterkeyhint="send">
     <button id="enviar">Enviar</button>
   </div>
-  <div id="soleitura">Somente leitura. Leia o QR Code no Receiver para poder escrever.</div>
+  <div id="soleitura">Somente leitura. Leia o QR Code no Receiver para poder escrever,
+    ou peça para ele liberar a escrita por endereço.</div>
 </div>
 <div id="flash"></div>
 
@@ -274,12 +275,18 @@
   campoTexto.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); enviar(); } });
 
   pintaEu();
-  modoEscrita(!!token);
+  modoEscrita(!!token);   // quem leu o QR ja entra escrevendo
 
   function clearAll () { entries = {}; order = []; renderChat(); }
 
   function connect () {
     fetch('/state').then(function (r) { return r.json(); }).then(function (s) {
+      /* Quando o Receiver dispensa o QR, quem chegou digitando o endereco
+         tambem escreve. Sem isto o tecnico abriria pelo IP, a escrita estaria
+         liberada, e ele continuaria vendo "somente leitura" -- concluindo que
+         a funcao nao funciona. */
+      if (s.escritaLivre) modoEscrita(true);
+
       entries = {}; order = [];
       (s.entries || []).forEach(function (m) { entries[key(m)] = m; order.push(key(m)); });
       participants = s.participants || [];

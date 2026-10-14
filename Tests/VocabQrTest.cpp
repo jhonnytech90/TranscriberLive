@@ -17,6 +17,7 @@
 #include "Common/QrCode.h"
 #include "Common/Modelos.h"
 #include "Common/HttpServer.h"
+#include "Common/MessageStore.h"
 #include <juce_core/juce_core.h>
 #include <cstdio>
 
@@ -409,7 +410,127 @@ static void testeEscritaWeb()
         checa (statusDe (r).contains ("403"), "o codigo antigo deveria ter parado de valer");
     }
 
+    /*  ---- escrita sem o QR Code -------------------------------------------
+
+        O tecnico de P.A. e o de monitor conversam entre dois PCs, e PC nao le
+        QR Code. Com "exigir codigo" desligado, quem digita o endereco escreve.
+
+        O que estes casos protegem: que desligar a exigencia do codigo NAO
+        desligue a chave geral da escrita. Sao duas decisoes diferentes, e
+        confundir as duas abriria o telao para a rede inteira quando o cliente
+        achou que estava apenas dispensando o QR.                            */
+    {
+        web.setExigirCodigo (false);
+
+        const auto semCodigo = postSay (porta, "{\"id\":\"pa\",\"name\":\"P.A.\",\"text\":\"sem codigo\"}");
+        checa (statusDe (semCodigo).contains ("200"),
+               "sem exigir codigo, mensagem sem 'k' deveria entrar: " + statusDe (semCodigo));
+
+        const auto codigoErrado = postSay (porta, "{\"k\":\"XXXXXXXX\",\"id\":\"pa\",\"text\":\"codigo qualquer\"}");
+        checa (statusDe (codigoErrado).contains ("200"),
+               "sem exigir codigo, nem um codigo errado deveria barrar");
+
+        // A chave geral continua acima disso.
+        web.setEscritaPermitida (false);
+        const auto desligada = postSay (porta, "{\"id\":\"pa\",\"text\":\"com a escrita desligada\"}");
+        checa (statusDe (desligada).contains ("403"),
+               "com a escrita desligada, nem sem exigir codigo pode entrar");
+        web.setEscritaPermitida (true);
+
+        // E voltar a exigir o codigo tem que voltar a barrar.
+        web.setExigirCodigo (true);
+        const auto deNovo = postSay (porta, "{\"id\":\"pa\",\"text\":\"sem codigo outra vez\"}");
+        checa (statusDe (deNovo).contains ("403"),
+               "voltando a exigir o codigo, mensagem sem 'k' tem que ser recusada");
+    }
+
     web.stop();
+}
+
+//==============================================================================
+/*  Juntar o estado da maquina parceira.
+
+    O tecnico de P.A. aponta para a maquina do monitor e passa a ver os
+    Receivers de la junto com os daqui. O que me preocupa aqui nao e a juncao
+    funcionar -- e ela APAGAR a conversa local. applyStateJson foi escrita para
+    espelhar outro processo DA MESMA maquina, onde obedecer a limpeza do outro
+    lado e o certo. Com a parceira nao e: o outro tecnico limpar a tela dele
+    nao pode limpar a nossa.                                                 */
+static void testeParceiro()
+{
+    printf ("maquina parceira...\n");
+
+    auto estadoCom = [] (const juce::String& canal, const juce::String& texto,
+                         juce::int64 clearSeq)
+    {
+        auto* e = new juce::DynamicObject();
+        e->setProperty ("ch", canal);
+        e->setProperty ("name", canal);
+        e->setProperty ("color", "3ddc84");
+        e->setProperty ("imp", 1);
+        e->setProperty ("utt", canal + "-1");
+        e->setProperty ("text", texto);
+        e->setProperty ("final", true);
+        e->setProperty ("t", (juce::int64) 1);
+
+        juce::Array<juce::var> entradas;
+        entradas.add (juce::var (e));
+
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("entries", juce::var (entradas));
+        o->setProperty ("participants", juce::var (juce::Array<juce::var>()));
+        o->setProperty ("lastSeq", (juce::int64) 1);
+        o->setProperty ("clearSeq", clearSeq);
+        return juce::JSON::toString (juce::var (o), true);
+    };
+
+    // ---- a conversa local sobrevive ao que vem de fora -----------------------
+    {
+        tl::MessageStore store;
+
+        tl::Message minha;
+        minha.type = "msg"; minha.channelId = "daqui"; minha.name = "Monitor";
+        minha.utteranceId = "u1"; minha.text = "meu retorno"; minha.isFinal = true;
+        store.handle (minha);
+
+        store.applyStateJson (estadoCom ("dela", "o grave da casa", 7), false);
+
+        const auto e = store.getEntries();
+        bool temMinha = false, temDela = false;
+        for (auto& x : e)
+        {
+            if (x.channelId == "daqui") temMinha = true;
+            if (x.channelId == "dela")  temDela  = true;
+        }
+        checa (temDela,  "a mensagem da maquina parceira deveria aparecer aqui");
+        checa (temMinha, "juntar a parceira APAGOU a conversa local");
+
+        // O outro tecnico limpa a tela dele: a nossa fica.
+        store.applyStateJson (estadoCom ("dela", "o grave da casa", 99), false);
+        bool aindaTemMinha = false;
+        for (auto& x : store.getEntries())
+            if (x.channelId == "daqui") aindaTemMinha = true;
+        checa (aindaTemMinha, "o outro lado limpar a tela dele nao pode limpar a nossa");
+    }
+
+    // ---- e o espelhamento da mesma maquina continua obedecendo --------------
+    {
+        tl::MessageStore store;
+
+        tl::Message minha;
+        minha.type = "msg"; minha.channelId = "daqui"; minha.name = "Monitor";
+        minha.utteranceId = "u1"; minha.text = "meu retorno"; minha.isFinal = true;
+        store.handle (minha);
+
+        store.applyStateJson (estadoCom ("primario", "oi", 1), true);
+        store.applyStateJson (estadoCom ("primario", "oi", 2), true);   // limpou la
+
+        bool temLocal = false;
+        for (auto& x : store.getEntries())
+            if (x.channelId == "daqui") temLocal = true;
+        checa (! temLocal,
+               "espelhando o MESMO computador, a limpeza do primario tem que valer aqui");
+    }
 }
 
 //==============================================================================
@@ -419,6 +540,7 @@ int main()
     testeQr();
     testeModelos();
     testeEscritaWeb();
+    testeParceiro();
 
     printf (falhas == 0 ? "\nTUDO OK\n" : "\n%d FALHA(S)\n", falhas);
     return falhas == 0 ? 0 : 1;

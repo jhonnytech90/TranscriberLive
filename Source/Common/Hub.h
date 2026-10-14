@@ -63,6 +63,39 @@ namespace tl
         int  getWebClients() const         { return web.getNumClients(); }
         bool isMirroring() const noexcept  { return mirroring.load(); }
 
+        //-- maquina parceira ---------------------------------------------------------
+        /*  Outro computador da mesma rede cujas mensagens aparecem aqui tambem.
+
+            Nasceu do tecnico de P.A. conversando com o de monitor: cada um num
+            PC, cada um com o seu Receiver. Cada lado aponta para o outro e os
+            dois passam a ver a conversa inteira.
+
+            E PUXADO, nao empurrado: este Display busca o estado de la. Assim so
+            quem quer ver precisa configurar -- nao e preciso mexer na maquina
+            do outro tecnico, que pode nem estar por perto na hora.           */
+        juce::String getParceiro() const
+        {
+            const juce::ScopedLock sl (parceiroLock);
+            return parceiro;
+        }
+
+        void setParceiro (const juce::String& host)
+        {
+            const auto limpo = host.trim();
+            {
+                const juce::ScopedLock sl (parceiroLock);
+                if (limpo == parceiro) return;
+                parceiro = limpo;
+                parceiroOnline.store (false);
+            }
+            TL_LOGI ("hub", limpo.isEmpty() ? juce::String ("sem maquina parceira")
+                                            : "maquina parceira: " + limpo);
+            saveSettings();
+        }
+
+        /** true quando a parceira respondeu na ultima tentativa. */
+        bool isParceiroOnline() const noexcept { return parceiroOnline.load(); }
+
         /*  UM endereco, o melhor da lista -- nao dois.
 
             Mostrar "A ou B" parecia gentil e nao era: o Receiver desenhava o QR
@@ -119,6 +152,31 @@ namespace tl
 
             falarComPrimario (permitir, false);
             salvarEscrita (permitir);
+        }
+
+        /*  Exigir o codigo do QR para escrever.
+
+            Desligado, quem digitar o endereco escreve. E o caminho do tecnico
+            de P.A. falando com o de monitor: os dois estao em PC, e PC nao tem
+            camera para ler QR Code.                                          */
+        bool isExigirCodigo() const
+        {
+            if (isWebPrimary()) return web.isExigirCodigo();
+            const juce::ScopedLock sl (tokenRemotoLock);
+            return exigirRemoto;
+        }
+
+        void setExigirCodigo (bool exigir)
+        {
+            if (isWebPrimary())
+            {
+                web.setExigirCodigo (exigir);
+                salvarExigir (exigir);
+                return;
+            }
+
+            falarComPrimario (web.isEscritaPermitida(), false, &exigir);
+            salvarExigir (exigir);
         }
 
         /** Sorteia um codigo novo: os aparelhos que ja entraram param de
@@ -283,7 +341,34 @@ namespace tl
                     mirroring.store (false);
                     wait (1000);
                 }
+
+                buscarDoParceiro();
             }
+        }
+
+        /*  Puxa o estado da maquina parceira e junta ao nosso.
+
+            Sem obedecer a limpeza dela (ver applyStateJson): quando o outro
+            tecnico limpa a tela dele, a nossa conversa continua aqui.
+
+            Falha calada de proposito: a parceira pode estar desligada no meio
+            do show, e isso nao e erro -- a interface mostra que ela esta fora
+            e o resto do Display segue funcionando.                           */
+        void buscarDoParceiro()
+        {
+            const auto host = getParceiro();
+            if (host.isEmpty()) { parceiroOnline.store (false); return; }
+
+            juce::URL url ("http://" + host + ":" + juce::String (httpPort) + "/state");
+            auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                            .withConnectionTimeoutMs (900);
+
+            juce::String json;
+            if (auto in = url.createInputStream (opts)) json = in->readEntireStreamAsString();
+
+            const bool ok = json.isNotEmpty();
+            parceiroOnline.store (ok);
+            if (ok) store.applyStateJson (json, false);
         }
 
         //-- ponte com o primario (so 127.0.0.1 responde a /token) -----------------
@@ -312,20 +397,27 @@ namespace tl
                 const juce::ScopedLock sl (tokenRemotoLock);
                 tokenRemoto   = o->getProperty ("token").toString();
                 escritaRemota = (bool) o->getProperty ("escrita");
+                if (o->hasProperty ("exigirCodigo"))
+                    exigirRemoto = (bool) o->getProperty ("exigirCodigo");
             }
         }
 
         void buscarTokenDoPrimario() { guardarResposta (pedir ({})); }
 
-        void falarComPrimario (bool permitir, bool novoToken)
+        void falarComPrimario (bool permitir, bool novoToken, const bool* exigir = nullptr)
         {
             // Em thread propria: isto sai de um clique na interface, e uma
             // chamada de rede sincrona ali travaria a janela do plugin.
-            juce::Thread::launch ([this, permitir, novoToken]
+            // O ponteiro nao sobrevive a volta desta funcao: a thread so leva
+            // o valor, em -1/0/1 (nao mexer / desligar / ligar).
+            const int exigirValor = exigir == nullptr ? -1 : (*exigir ? 1 : 0);
+
+            juce::Thread::launch ([this, permitir, novoToken, exigirValor]
             {
                 auto* o = new juce::DynamicObject();
                 o->setProperty ("escrita", permitir);
                 o->setProperty ("novo", novoToken);
+                if (exigirValor >= 0) o->setProperty ("exigirCodigo", exigirValor == 1);
                 guardarResposta (pedir (juce::JSON::toString (juce::var (o), true)));
             });
         }
@@ -333,6 +425,12 @@ namespace tl
         void salvarEscrita (bool permitir)
         {
             escritaSalva = permitir;
+            saveSettings();
+        }
+
+        void salvarExigir (bool exigir)
+        {
+            exigirSalvo = exigir;
             saveSettings();
         }
 
@@ -344,9 +442,15 @@ namespace tl
                 busPort  = xml->getIntAttribute ("busPort",  kDefaultBusPort);
                 httpPort = xml->getIntAttribute ("httpPort", kDefaultHttpPort);
                 escritaSalva = xml->getBoolAttribute ("escritaCelular", true);
+                // Padrao true: quem atualiza nao ganha o telao aberto para a
+                // rede sem ter pedido.
+                exigirSalvo  = xml->getBoolAttribute ("exigirCodigo", true);
+                { const juce::ScopedLock sl (parceiroLock);
+                  parceiro = xml->getStringAttribute ("parceiro", {}).trim(); }
             }
 
             web.setEscritaPermitida (escritaSalva);
+            web.setExigirCodigo (exigirSalvo);
         }
 
         void saveSettings()
@@ -355,6 +459,8 @@ namespace tl
             xml.setAttribute ("busPort", busPort);
             xml.setAttribute ("httpPort", httpPort);
             xml.setAttribute ("escritaCelular", escritaSalva);
+            xml.setAttribute ("exigirCodigo", exigirSalvo);
+            xml.setAttribute ("parceiro", getParceiro());
             getDataDir().createDirectory();
             xml.writeTo (getDataDir().getChildFile ("settings.xml"));
         }
@@ -363,6 +469,10 @@ namespace tl
         HttpServer  web;
         int busPort = kDefaultBusPort, httpPort = kDefaultHttpPort;
         std::atomic<bool> mirroring { false };
+        bool exigirSalvo = true;
+        mutable juce::CriticalSection parceiroLock;
+        juce::String parceiro;
+        std::atomic<bool> parceiroOnline { false };
 
         bool escritaSalva = true;
 
@@ -370,5 +480,6 @@ namespace tl
         mutable juce::CriticalSection tokenRemotoLock;
         juce::String tokenRemoto;
         bool         escritaRemota = true;
+        bool exigirRemoto = true;
     };
 }

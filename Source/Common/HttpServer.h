@@ -51,6 +51,25 @@ namespace tl
         }
         bool isEscritaPermitida() const noexcept   { return escritaPermitida.load(); }
 
+        /*  Exigir o codigo do QR para escrever.
+
+            Ligado (padrao): so escreve quem apontou a camera. E o que separa a
+            producao de alguem que descobriu o endereco na rede do local.
+
+            Desligado: quem digitar o endereco tambem escreve. Existe porque o
+            tecnico de P.A. e o de monitor conversam entre dois PCs, e PC nao
+            tem camera para ler QR. Vale a pena dizer o que isso custa: na rede
+            do local, qualquer um que descubra o endereco passa a escrever no
+            telao. Numa rede de produção isso e aceitavel; num Wi-Fi aberto de
+            casa de show, pense duas vezes.                                   */
+        void setExigirCodigo (bool p) noexcept
+        {
+            if (exigirCodigo.exchange (p) != p)
+                TL_LOGI ("web", p ? "escrita exige o codigo do QR"
+                                  : "escrita liberada para quem digitar o endereco");
+        }
+        bool isExigirCodigo() const noexcept       { return exigirCodigo.load(); }
+
         juce::String getToken() const { const juce::ScopedLock sl (tokenLock); return token; }
 
         /** Novo código: invalida os aparelhos que já tinham entrado. Serve
@@ -310,6 +329,9 @@ namespace tl
                         if (in->hasProperty ("escrita"))
                             server.setEscritaPermitida ((bool) in->getProperty ("escrita"));
 
+                        if (in->hasProperty ("exigirCodigo"))
+                            server.setExigirCodigo ((bool) in->getProperty ("exigirCodigo"));
+
                         if ((bool) in->getProperty ("novo"))
                             server.sortearToken();
                     }
@@ -318,6 +340,7 @@ namespace tl
                 auto* o = new juce::DynamicObject();
                 o->setProperty ("token", server.getToken());
                 o->setProperty ("escrita", server.isEscritaPermitida());
+                o->setProperty ("exigirCodigo", server.isExigirCodigo());
                 sendResponse ("200 OK", "application/json; charset=utf-8",
                               juce::JSON::toString (juce::var (o), true));
             }
@@ -339,7 +362,8 @@ namespace tl
                     return;
                 }
 
-                if (o->getProperty ("k").toString() != server.getToken())
+                if (server.isExigirCodigo()
+                    && o->getProperty ("k").toString() != server.getToken())
                 {
                     TL_LOGW ("web", "mensagem recusada: codigo de escrita errado (de "
                                     + socket->getHostName() + ")");
@@ -396,6 +420,13 @@ namespace tl
                 o->setProperty ("entries", juce::var (arr));
                 o->setProperty ("lastSeq", server.store.getLastSeq());
                 o->setProperty ("clearSeq", server.store.getClearSeq());
+
+                // A pagina precisa saber se pode mostrar a barra de escrever
+                // para quem chegou sem o codigo do QR -- senao o tecnico abre
+                // pelo endereco, a escrita esta liberada e ele ve "somente
+                // leitura" mesmo assim.
+                o->setProperty ("escritaLivre", server.isEscritaPermitida()
+                                                && ! server.isExigirCodigo());
                 return juce::JSON::toString (juce::var (o), true);
             }
 
@@ -516,6 +547,7 @@ namespace tl
         mutable juce::CriticalSection tokenLock;
         juce::String      token;
         std::atomic<bool> escritaPermitida { true };
+        std::atomic<bool> exigirCodigo     { true };
         int boundPort = 0;
     };
 }

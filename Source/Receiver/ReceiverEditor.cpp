@@ -471,6 +471,8 @@ void TranscriberLiveAudioProcessorEditor::showQr()
         juce::TextButton   copiar { "Copiar endere" + juce::String (juce::CharPointer_UTF8 ("\xc3\xa7" "o")) };
         juce::ToggleButton escrever { juce::String (juce::CharPointer_UTF8 (
                                "Celulares podem escrever")) };
+        juce::ToggleButton semQr { juce::String (juce::CharPointer_UTF8 (
+                               "Sem precisar do QR (vale digitar o endere\xc3\xa7" "o)")) };
         juce::TextButton   novoCodigo { juce::String (juce::CharPointer_UTF8 ("Trocar c\xc3\xb3" "digo")) };
         juce::TextButton   outraRede;
         bool               temOutraRede = false;
@@ -505,6 +507,7 @@ void TranscriberLiveAudioProcessorEditor::showQr()
             aviso.setBounds (r.removeFromTop (44));
             r.removeFromTop (4);
             escrever.setBounds (r.removeFromTop (24));
+            semQr.setBounds (r.removeFromTop (22));
             r.removeFromTop (4);
             auto linha = r.removeFromTop (26);
             copiar.setBounds (linha.removeFromLeft (linha.getWidth() / 2 - 3));
@@ -516,7 +519,8 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     auto* p = panel.get();
 
     for (auto* c : std::initializer_list<juce::Component*> { &p->titulo, &p->endereco, &p->aviso,
-                                                            &p->copiar, &p->escrever, &p->novoCodigo })
+                                                            &p->copiar, &p->escrever, &p->novoCodigo,
+                                                            &p->semQr })
         p->addAndMakeVisible (c);
 
     /*  Trocar de rede.
@@ -547,11 +551,26 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     p->aviso.setJustificationType (juce::Justification::centredTop);
     p->aviso.setFont (juce::FontOptions (11.0f));
     p->aviso.setColour (juce::Label::textColourId, tl::col::dim);
-    p->setSize (270, 390);   // +30 quando ha botao de trocar de rede (abaixo)
+    p->setSize (270, 412);   // +30 quando ha botao de trocar de rede (abaixo)
 
     // ---- chave geral da escrita --------------------------------------------
     // Fica aqui, junto do QR, porque e a mesma decisao: quem pode escrever no
     // telao. Desligada, nem quem leu o QR escreve.
+    /*  Dispensar o QR.
+
+        Existe para o tecnico de P.A. falar com o de monitor: os dois estao em
+        PC, e PC nao tem camera para ler QR Code.
+
+        Fica DESLIGADO por padrao, e o aviso diz por que: sem o codigo, qualquer
+        um que descubra o endereco na rede do local escreve no telao. Numa rede
+        de producao tudo bem; num Wi-Fi aberto de casa de show, nao.          */
+    p->semQr.setToggleState (! processor.hub->isExigirCodigo(), juce::dontSendNotification);
+    p->semQr.setEnabled (processor.hub->isEscritaPermitida());
+    p->semQr.setTooltip (juce::String (juce::CharPointer_UTF8 (
+        "Para PC, que nao le QR Code. Com isto ligado, quem digitar o endere\xc3\xa7" "o "
+        "no navegador tamb\xc3\xa9m escreve \xe2\x80\x94 inclusive quem s\xc3\xb3 descobriu o "
+        "endere\xc3\xa7" "o na rede do local.")));
+
     p->escrever.setToggleState (processor.hub->isEscritaPermitida(), juce::dontSendNotification);
     p->escrever.setTooltip (juce::String (juce::CharPointer_UTF8 (
         "Desligado, ningu\xc3\xa9m escreve pelo celular, nem quem j\xc3\xa1 leu o QR.")));
@@ -566,7 +585,22 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     p->escrever.onClick = [safeQr, p]
     {
         if (safeQr == nullptr) return;
-        safeQr->processor.hub->setEscritaPermitida (p->escrever.getToggleState());
+        const bool permitir = p->escrever.getToggleState();
+        safeQr->processor.hub->setEscritaPermitida (permitir);
+
+        // Com a escrita desligada, "dispensar o QR" nao quer dizer nada.
+        p->semQr.setEnabled (permitir);
+    };
+
+    p->semQr.onClick = [safeQr, p]
+    {
+        if (safeQr == nullptr) return;
+        safeQr->processor.hub->setExigirCodigo (! p->semQr.getToggleState());
+
+        // Redesenha: o texto embaixo do QR muda, porque agora quem digita o
+        // endereco tambem escreve.
+        if (auto* box = p->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
+        safeQr->showQr();
     };
 
     p->outraRede.onClick = [safeQr, p]
@@ -615,7 +649,7 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     else
     {
         p->temQr = true;
-        if (p->temOutraRede) p->setSize (270, 420);
+        if (p->temOutraRede) p->setSize (270, 442);
         const auto id = processor.getIdentity();
         const bool temCodigo = url.contains ("?k=");
 

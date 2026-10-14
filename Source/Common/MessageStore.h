@@ -150,17 +150,31 @@ namespace tl
         }
 
         /** Modo secundário: aplica o JSON de /state de outro processo (que tem as portas). */
-        void applyStateJson (const juce::String& json)
+        /*  `obedecerLimpeza` separa dois usos muito diferentes desta funcao.
+
+            true  -- espelhamento do MESMO computador: outro processo daqui e o
+                     primario e nos somos a copia. Se ele limpou a tela, nos
+                     limpamos junto; e a mesma sessao.
+
+            false -- a maquina PARCEIRA, do outro tecnico. Ali juntamos as
+                     mensagens dele com as nossas, mas quando ele limpa a tela
+                     dele a nossa fica. Limpar seria apagar a conversa de quem
+                     nao pediu nada -- e os dois lados ficariam brigando pelo
+                     mesmo contador de limpeza.                               */
+        void applyStateJson (const juce::String& json, bool obedecerLimpeza = true)
         {
             auto v = juce::JSON::parse (json);
             auto* o = v.getDynamicObject();
             if (o == nullptr) return;
 
-            const auto remoteClear = (juce::int64) o->getProperty ("clearSeq");
-            if (remoteClear != lastRemoteClearSeq)
+            if (obedecerLimpeza)
             {
-                if (lastRemoteClearSeq != 0 || getEntries().empty() == false) clear();
-                lastRemoteClearSeq = remoteClear;
+                const auto remoteClear = (juce::int64) o->getProperty ("clearSeq");
+                if (remoteClear != lastRemoteClearSeq)
+                {
+                    if (lastRemoteClearSeq != 0 || getEntries().empty() == false) clear();
+                    lastRemoteClearSeq = remoteClear;
+                }
             }
 
             std::map<juce::String, bool> flashByChannel;
