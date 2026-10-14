@@ -47,8 +47,19 @@ namespace tl
         ~Hub() override
         {
             TL_LOGI ("hub", "encerrando");
+
+            /*  `encerrando` antes de stopThread de proposito.
+
+                A thread de sincronismo faz chamadas HTTP. Se ela for morta no
+                meio de uma (stopThread desiste e mata), o pool de autorelease
+                do macOS fica com objeto solto e o processo cai na saida -- era
+                exatamente isto que fechava o Display sozinho. Com o aviso, ela
+                nao COMECA mais nenhuma chamada e sai sozinha; os 6 s sao folga
+                para a que ja estava em voo terminar em paz.                  */
+            encerrando.store (true);
+            notify();
             stopTimer();
-            stopThread (3000);
+            stopThread (6000);
             web.stop();
             listener.stop();
         }
@@ -187,6 +198,10 @@ namespace tl
                 return;
             }
 
+            {   // a interface le isto no proximo refresh: nao espera a volta
+                const juce::ScopedLock sl (tokenRemotoLock);
+                exigirRemoto = exigir;
+            }
             falarComPrimario (web.isEscritaPermitida(), false, &exigir);
             salvarExigir (exigir);
         }
@@ -327,8 +342,17 @@ namespace tl
         // thread de espelhamento (modo secundário)
         void run() override
         {
-            while (! threadShouldExit())
+            while (! saindo())
             {
+                /*  Um pool por volta, nao um pelo processo todo.
+
+                    Cada chamada HTTP no macOS deixa objetos autorelease. Sem
+                    isto eles ficavam presos no pool unico da thread e so eram
+                    soltos na saida: memoria subindo durante o show inteiro e
+                    uma drenagem enorme no fechamento -- o pior momento. Agora
+                    cada volta limpa a sua.                                  */
+                JUCE_AUTORELEASEPOOL
+
                 if (! web.isRunning())
                 {
                     juce::URL url ("http://127.0.0.1:" + juce::String (httpPort) + "/state");
@@ -344,7 +368,7 @@ namespace tl
                     // primario. Fica aqui, e nao na interface, porque e uma
                     // chamada de rede: na thread da UI ela travaria a janela
                     // do plugin toda vez que o primario demorasse.
-                    if (ok) buscarTokenDoPrimario();
+                    if (ok && ! saindo()) buscarTokenDoPrimario();
 
                     wait (ok ? 400 : 1500);
                 }
@@ -354,7 +378,42 @@ namespace tl
                     wait (1000);
                 }
 
+                /*  Depois do wait, nao antes: wait volta na hora quando alguem
+                    chama notify(), e quem chama notify() e o destrutor ou um
+                    clique na interface. Sem reconferir aqui, a volta do wait
+                    caia direto numa chamada de rede nova -- inclusive no
+                    fechamento, que e onde doia.                             */
+                if (saindo()) break;
+
+                enviarPendentes();
+                if (saindo()) break;
+
                 buscarDoParceiro();
+            }
+        }
+
+        /** Hora de sair: pediram para parar a thread ou o Hub esta acabando. */
+        bool saindo() const { return threadShouldExit() || encerrando.load(); }
+
+        /*  Pedidos ao primario, feitos NA NOSSA thread.
+
+            Antes cada clique soltava uma thread avulsa que capturava `this`.
+            Se o plugin fechasse antes dela acordar, ela mexia num Hub que nao
+            existia mais. Esta thread o destrutor espera; aquela, ninguem.   */
+        void enviarPendentes()
+        {
+            for (;;)
+            {
+                juce::String corpo;
+                {
+                    const juce::ScopedLock sl (filaLock);
+                    if (fila.isEmpty()) return;
+                    corpo = fila[0];
+                    fila.remove (0);
+                }
+
+                guardarResposta (pedir (corpo));
+                if (saindo()) return;
             }
         }
 
@@ -370,6 +429,7 @@ namespace tl
         {
             const auto host = getParceiro();
             if (host.isEmpty()) { parceiroOnline.store (false); return; }
+            if (saindo()) return;
 
             juce::URL url ("http://" + comPorta (host) + "/state");
             auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
@@ -418,20 +478,21 @@ namespace tl
 
         void falarComPrimario (bool permitir, bool novoToken, const bool* exigir = nullptr)
         {
-            // Em thread propria: isto sai de um clique na interface, e uma
-            // chamada de rede sincrona ali travaria a janela do plugin.
-            // O ponteiro nao sobrevive a volta desta funcao: a thread so leva
-            // o valor, em -1/0/1 (nao mexer / desligar / ligar).
-            const int exigirValor = exigir == nullptr ? -1 : (*exigir ? 1 : 0);
+            /*  Nao manda daqui: isto sai de um clique na interface, e uma
+                chamada de rede sincrona ali travaria a janela do plugin.
+                Vai para a fila e a thread de sincronismo manda -- o notify()
+                abaixo a acorda na hora, entao o clique nao fica esperando o
+                proximo ciclo.                                               */
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("escrita", permitir);
+            o->setProperty ("novo", novoToken);
+            if (exigir != nullptr) o->setProperty ("exigirCodigo", *exigir);
 
-            juce::Thread::launch ([this, permitir, novoToken, exigirValor]
             {
-                auto* o = new juce::DynamicObject();
-                o->setProperty ("escrita", permitir);
-                o->setProperty ("novo", novoToken);
-                if (exigirValor >= 0) o->setProperty ("exigirCodigo", exigirValor == 1);
-                guardarResposta (pedir (juce::JSON::toString (juce::var (o), true)));
-            });
+                const juce::ScopedLock sl (filaLock);
+                fila.add (juce::JSON::toString (juce::var (o), true));
+            }
+            notify();
         }
 
         void salvarEscrita (bool permitir)
@@ -481,6 +542,9 @@ namespace tl
         HttpServer  web;
         int busPort = kDefaultBusPort, httpPort = kDefaultHttpPort;
         std::atomic<bool> mirroring { false };
+        std::atomic<bool> encerrando { false };
+        juce::CriticalSection filaLock;
+        juce::StringArray fila;
         bool exigirSalvo = true;
         mutable juce::CriticalSection parceiroLock;
         juce::String parceiro;
