@@ -350,13 +350,15 @@ void DisplayAudioProcessorEditor::showSettings()
             ajuda.setText (juce::String (juce::CharPointer_UTF8 (
                 "Mostra aqui tamb\xc3\xa9m os Receivers daquele computador. Serve para o "
                 "t\xc3\xa9" "cnico de P.A. e o de monitor conversarem entre dois PCs: cada "
-                "um aponta para o outro. Deixe vazio para usar s\xc3\xb3 esta m\xc3\xa1quina.")),
+                "um aponta para o outro. Vale tanto neste plugin dentro do host "
+                "quanto no app Display. Se a outra m\xc3\xa1quina estiver em outra porta "
+                "web, escreva ip:porta. Vazio = s\xc3\xb3 esta m\xc3\xa1quina.")),
                 juce::dontSendNotification);
 
             situacao.setFont (juce::FontOptions (11.0f));
             situacao.setJustificationType (juce::Justification::centredLeft);
 
-            setSize (320, 268);
+            setSize (340, 290);
         }
         void resized() override
         {
@@ -369,7 +371,7 @@ void DisplayAudioProcessorEditor::showSettings()
             r.removeFromTop (10);
             auto c = r.removeFromTop (26); l3.setBounds (c.removeFromLeft (170)); parceiro.setBounds (c);
             situacao.setBounds (r.removeFromTop (16));
-            ajuda.setBounds (r.removeFromTop (52));
+            ajuda.setBounds (r.removeFromTop (72));
             r.removeFromTop (6);
             apply.setBounds (r.removeFromTop (28));
         }
@@ -381,7 +383,7 @@ void DisplayAudioProcessorEditor::showSettings()
     panel->webOn.setVisible (false);
 
     panel->parceiro.setText (processor.hub->getParceiro());
-    panel->parceiro.setTextToShowWhenEmpty ("ex.: 192.168.0.20", tl::col::dim);
+    panel->parceiro.setTextToShowWhenEmpty ("ex.: 192.168.0.20 ou 192.168.0.20:47801", tl::col::dim);
 
     {
         const auto host = processor.hub->getParceiro();
@@ -402,13 +404,12 @@ void DisplayAudioProcessorEditor::showSettings()
         if (safe == nullptr) return;
         safe->processor.hub->setPorts (raw->bus.getText().getIntValue(), raw->http.getText().getIntValue());
 
-        /*  So o endereco, sem "http://" nem porta: a porta e a mesma dos dois
-            lados (a web, configurada acima). O cliente cola o que estiver na
-            mao, entao limpamos o que daria para limpar em vez de recusar.    */
-        auto host = raw->parceiro.getText().trim()
-                        .fromLastOccurrenceOf ("/", false, false)
-                        .upToFirstOccurrenceOf (":", false, false)
-                        .trim();
+        /*  O cliente cola o que estiver na mao, entao limpamos o que daria
+            para limpar em vez de recusar: tira "http://" e qualquer caminho
+            depois do endereco. A PORTA fica, se ele digitou uma -- as duas
+            maquinas costumam usar a mesma, mas quem achou a porta ocupada
+            subiu para a seguinte, e so ele sabe disso.                      */
+        const auto host = tl::limparEnderecoParceiro (raw->parceiro.getText());
         safe->processor.hub->setParceiro (host);
         if (auto* box = raw->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
     };

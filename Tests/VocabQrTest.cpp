@@ -18,6 +18,7 @@
 #include "Common/Modelos.h"
 #include "Common/HttpServer.h"
 #include "Common/MessageStore.h"
+#include "Common/EnderecoParceiro.h"
 #include <juce_core/juce_core.h>
 #include <cstdio>
 
@@ -456,6 +457,43 @@ static void testeEscritaWeb()
     espelhar outro processo DA MESMA maquina, onde obedecer a limpeza do outro
     lado e o certo. Com a parceira nao e: o outro tecnico limpar a tela dele
     nao pode limpar a nossa.                                                 */
+
+/*  O campo da maquina parceira recebe o que o tecnico tem na mao no meio do
+    show: um IP, um IP com porta, ou a URL inteira copiada do navegador.    */
+static void testeEnderecoParceiro()
+{
+    printf ("endereco da maquina parceira...\n");
+
+    struct Caso { const char* digitado; const char* limpo; const char* comPorta; };
+    const Caso casos[] = {
+        { "192.168.0.20",                  "192.168.0.20",       "192.168.0.20:47801" },
+        { "  192.168.0.20  ",              "192.168.0.20",       "192.168.0.20:47801" },
+        { "192.168.0.20:47802",            "192.168.0.20:47802", "192.168.0.20:47802" },
+        { "http://192.168.0.20:47802/",    "192.168.0.20:47802", "192.168.0.20:47802" },
+        { "http://192.168.0.20",           "192.168.0.20",       "192.168.0.20:47801" },
+        { "192.168.0.20/display",          "192.168.0.20",       "192.168.0.20:47801" },
+        { "",                              "",                   ""                   },
+        { "   ",                           "",                   ""                   },
+    };
+
+    for (auto& c : casos)
+    {
+        const auto limpo = tl::limparEnderecoParceiro (c.digitado);
+        checa (limpo == c.limpo,
+               juce::String ("limpar \"") + c.digitado + "\" deu \"" + limpo
+               + "\", esperado \"" + c.limpo + "\"");
+
+        const auto cheio = tl::completarPorta (limpo, 47801);
+        checa (cheio == c.comPorta,
+               juce::String ("completar \"") + c.digitado + "\" deu \"" + cheio
+               + "\", esperado \"" + c.comPorta + "\"");
+    }
+
+    // A porta digitada manda: a outra maquina pode ter subido de porta.
+    checa (tl::completarPorta ("10.0.0.5:47809", 47801) == "10.0.0.5:47809",
+           "a porta digitada pelo usuario foi trocada pela nossa");
+}
+
 static void testeParceiro()
 {
     printf ("maquina parceira...\n");
@@ -540,6 +578,7 @@ int main()
     testeQr();
     testeModelos();
     testeEscritaWeb();
+    testeEnderecoParceiro();
     testeParceiro();
 
     printf (falhas == 0 ? "\nTUDO OK\n" : "\n%d FALHA(S)\n", falhas);

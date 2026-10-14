@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
+#include "EnderecoParceiro.h"
 #include "MessageStore.h"
 #include "MessageBus.h"
 #include "HttpServer.h"
@@ -95,6 +96,17 @@ namespace tl
 
         /** true quando a parceira respondeu na ultima tentativa. */
         bool isParceiroOnline() const noexcept { return parceiroOnline.load(); }
+
+        /*  Completa o endereco da parceira com a porta.
+
+            O usuario pode digitar so o IP ou "ip:porta". As duas maquinas quase
+            sempre ficam na mesma porta web, mas nao e garantido: se uma delas
+            achou a porta ocupada, ela subiu para a seguinte. Por isso a porta
+            digitada manda, e a nossa so entra quando ele nao digitou nenhuma. */
+        juce::String comPorta (const juce::String& host) const
+        {
+            return completarPorta (host, httpPort);
+        }
 
         /*  UM endereco, o melhor da lista -- nao dois.
 
@@ -359,7 +371,7 @@ namespace tl
             const auto host = getParceiro();
             if (host.isEmpty()) { parceiroOnline.store (false); return; }
 
-            juce::URL url ("http://" + host + ":" + juce::String (httpPort) + "/state");
+            juce::URL url ("http://" + comPorta (host) + "/state");
             auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
                             .withConnectionTimeoutMs (900);
 
