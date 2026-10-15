@@ -233,45 +233,57 @@ jobs:
           name: TranscriberLive-Windows-Setup
           path: Instalador/Windows/saida/*.exe
 
-      # Igual ao macOS: link fixo, para mandar ao cliente sem ele precisar
-      # entrar no Actions, achar o run certo e baixar um zip.
-      - name: Publica na Release "windows-latest"
+      - name: Publica na Release da versao
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -e
-          gh release view windows-latest >/dev/null 2>&1 || \
-            gh release create windows-latest --title "Transcriber Live - Windows (build mais recente)" \
-               --notes "Instalador do Windows, gerado automaticamente a cada build. Instala os plugins VST3, o aplicativo do Display e baixa os modelos de voz." \
-               --latest=false
-          gh release upload windows-latest Instalador/Windows/saida/*.exe --clobber
+          # Cria (ou reaproveita) a Release da versao deste build e devolve a tag em $TAG.
+          #
+          # Uma Release POR VERSAO, nao uma fixa sobrescrita: e o historico que todo
+          # software tem -- quem precisa voltar para a 1.5 ainda acha a 1.5. A mais nova
+          # fica marcada como "Latest", entao /releases/latest segue sendo um link fixo
+          # para mandar ao cliente.
+          #
+          # Os dois instaladores (Windows e macOS) rodam em paralelo e caem aqui os
+          # dois. Quem chegar primeiro cria; o segundo encontra criada e so sobe o
+          # arquivo dele. O "|| true" cobre o empate: se os dois criarem ao mesmo
+          # tempo, um recebe "already exists", e isso nao e erro.
+          #
+          # Sem heredoc de proposito: dentro do bloco do YAML tudo vem indentado, e um
+          # terminador indentado nao fecha heredoc -- e 4 espacos no inicio da linha
+          # viram bloco de codigo no Markdown da Release.
+          preparar_release() {
+            VER=$(tr -d ' \n\r' < VERSAO)
+            TAG="v$VER"
 
-          # O nome do arquivo passou a levar a versao, entao "--clobber" nao
-          # sobrescreve mais nada: a Release acumularia um .exe por versao e o
-          # cliente que entrasse na pagina escolheria no chute -- varias vezes o
-          # antigo, que esta acima na lista. Fica so a versao deste build.
-          VER=$(tr -d ' \n\r' < VERSAO)
-          gh release view windows-latest --json assets -q '.assets[].name' | while read -r A; do
-            case "$A" in
-              *"-$VER-"*|*"-$VER."*) ;;
-              "") ;;
-              *) gh release delete-asset windows-latest "$A" -y && echo "removido da Release: $A" ;;
-            esac
-          done
+            if ! gh release view "$TAG" >/dev/null 2>&1; then
+              CORPO=$(printf '%s\n\n%s\n\n%s\n%s\n' \
+                "Transcriber Live **$VER**" \
+                "As novidades desta versao estao em <https://transcriberlive.stream/novidades.html>." \
+                "**Commit:** \`${GITHUB_SHA:0:7}\`" \
+                "**Compilado em:** $(date -u '+%d/%m/%Y as %H:%M') UTC")
 
-          # mesmo motivo do macOS: a pagina mostraria a data da tag, nao a do arquivo
-          gh release edit windows-latest \
-            --title "Transcriber Live $(tr -d ' \n\r' < VERSAO) - Windows ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
-            --notes "Instalador do Windows, gerado automaticamente.
+              gh release create "$TAG" --target "$GITHUB_SHA" \
+                 --title "Transcriber Live $VER" \
+                 --notes "$CORPO" --latest || true
+            fi
 
-          **Atualizado em:** $(date -u '+%d/%m/%Y as %H:%M') UTC
-          **Commit:** \`${GITHUB_SHA:0:7}\`
+            # Entre criar e subir pode haver alguns segundos de atraso na API.
+            for _ in 1 2 3 4 5; do
+              gh release view "$TAG" >/dev/null 2>&1 && return 0
+              sleep 3
+            done
+            echo "::error::nao consegui preparar a Release $TAG"
+            exit 1
+          }
 
-          Instala os plugins VST3, o aplicativo do Display e baixa os modelos de voz."
+          preparar_release
+          gh release upload "$TAG" Instalador/Windows/saida/*.exe --clobber
 
           echo "### Download" >> "$GITHUB_STEP_SUMMARY"
-          echo "Instalador do Windows em <${{ github.server_url }}/${{ github.repository }}/releases/tag/windows-latest>" >> "$GITHUB_STEP_SUMMARY"
+          echo "Instalador do Windows em <${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG>" >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # Instalador do macOS (.pkg offline, modelos embutidos) + desinstalador
@@ -420,46 +432,56 @@ jobs:
           done
           echo "desinstalado ok — nada ficou para tras"
 
-      - name: Publica na Release "macos-latest"
+      - name: Publica na Release da versao
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          gh release view macos-latest >/dev/null 2>&1 || \
-            gh release create macos-latest --title "Transcriber Live — macOS (build mais recente)" \
-               --notes "Instalador e desinstalador do macOS, gerados automaticamente a cada build. Os modelos de voz ja vem embutidos (Maxima precisao e Mais rapido): o cliente nao baixa nada." \
-               --latest=false
-          gh release upload macos-latest Instalador/saida/*.pkg --clobber
+          # Cria (ou reaproveita) a Release da versao deste build e devolve a tag em $TAG.
+          #
+          # Uma Release POR VERSAO, nao uma fixa sobrescrita: e o historico que todo
+          # software tem -- quem precisa voltar para a 1.5 ainda acha a 1.5. A mais nova
+          # fica marcada como "Latest", entao /releases/latest segue sendo um link fixo
+          # para mandar ao cliente.
+          #
+          # Os dois instaladores (Windows e macOS) rodam em paralelo e caem aqui os
+          # dois. Quem chegar primeiro cria; o segundo encontra criada e so sobe o
+          # arquivo dele. O "|| true" cobre o empate: se os dois criarem ao mesmo
+          # tempo, um recebe "already exists", e isso nao e erro.
+          #
+          # Sem heredoc de proposito: dentro do bloco do YAML tudo vem indentado, e um
+          # terminador indentado nao fecha heredoc -- e 4 espacos no inicio da linha
+          # viram bloco de codigo no Markdown da Release.
+          preparar_release() {
+            VER=$(tr -d ' \n\r' < VERSAO)
+            TAG="v$VER"
 
-          # O nome do arquivo passou a levar a versao, entao "--clobber" nao
-          # sobrescreve mais nada: a Release acumularia um .pkg por versao e o
-          # cliente que entrasse na pagina escolheria no chute -- varias vezes o
-          # antigo, que esta acima na lista. Fica so a versao deste build.
-          VER=$(tr -d ' \n\r' < VERSAO)
-          gh release view macos-latest --json assets -q '.assets[].name' | while read -r A; do
-            case "$A" in
-              *"-$VER-"*|*"-$VER."*) ;;
-              "") ;;
-              *) gh release delete-asset macos-latest "$A" -y && echo "removido da Release: $A" ;;
-            esac
-          done
+            if ! gh release view "$TAG" >/dev/null 2>&1; then
+              CORPO=$(printf '%s\n\n%s\n\n%s\n%s\n' \
+                "Transcriber Live **$VER**" \
+                "As novidades desta versao estao em <https://transcriberlive.stream/novidades.html>." \
+                "**Commit:** \`${GITHUB_SHA:0:7}\`" \
+                "**Compilado em:** $(date -u '+%d/%m/%Y as %H:%M') UTC")
 
-          # A release reaproveita a mesma tag, entao a PAGINA continua mostrando
-          # a data em que a tag foi criada -- e da a impressao de que o arquivo
-          # e velho, mesmo tendo acabado de ser trocado. Reescrevemos titulo e
-          # texto a cada build para a data e o commit ficarem visiveis.
-          gh release edit macos-latest \
-            --title "Transcriber Live $(tr -d ' \n\r' < VERSAO) - macOS ($(date -u '+%d/%m/%Y %H:%M') UTC)" \
-            --notes "Instalador e desinstalador do macOS, gerados automaticamente.
+              gh release create "$TAG" --target "$GITHUB_SHA" \
+                 --title "Transcriber Live $VER" \
+                 --notes "$CORPO" --latest || true
+            fi
 
-          **Atualizado em:** $(date -u '+%d/%m/%Y as %H:%M') UTC
-          **Commit:** \`${GITHUB_SHA:0:7}\`
+            # Entre criar e subir pode haver alguns segundos de atraso na API.
+            for _ in 1 2 3 4 5; do
+              gh release view "$TAG" >/dev/null 2>&1 && return 0
+              sleep 3
+            done
+            echo "::error::nao consegui preparar a Release $TAG"
+            exit 1
+          }
 
-          Os modelos de voz ja vem embutidos: o cliente nao baixa nada.
-          O plugin escolhe entre eles conforme a capacidade da maquina."
+          preparar_release
+          gh release upload "$TAG" Instalador/saida/*.pkg --clobber
 
           echo "### Download" >> "$GITHUB_STEP_SUMMARY"
-          echo "Instalador e desinstalador em <${{ github.server_url }}/${{ github.repository }}/releases/tag/macos-latest>" >> "$GITHUB_STEP_SUMMARY"
+          echo "Instalador e desinstalador em <${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG>" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload do desinstalador (pequeno, fica como artefato tambem)
         uses: actions/upload-artifact@v4
