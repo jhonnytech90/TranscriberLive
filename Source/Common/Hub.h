@@ -121,7 +121,7 @@ namespace tl
             idiomaEscolhido = novo;
             saveSettings();
             trocarIdioma (novo);   // troca a tabela e avisa as janelas abertas
-            TL_LOGI ("ui", juce::String ("idioma: ") + (int) novo);
+            TL_LOGI ("ui", "idioma: " + juce::String ((int) novo));
         }
 
         /** true quando a parceira respondeu na ultima tentativa. */
