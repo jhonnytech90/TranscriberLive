@@ -48,6 +48,30 @@ jobs:
           fi
           echo "nenhum escape ambiguo"
 
+      # Texto novo na interface sem entrada no catalogo nao da erro de
+      # compilacao: aparece em portugues no meio da interface em ingles, e so
+      # o cliente descobre. Aqui falha em dois segundos.
+      - name: Catalogo de traducao bate com o codigo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Ferramentas/idioma/conferir.py
+
+      # O .h da tabela e gerado. Se alguem editar o catalogo e esquecer de
+      # gerar, o build sairia com a traducao velha sem avisar.
+      - name: TraducaoEn.h esta na versao do catalogo
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp Source/Common/TraducaoEn.h /tmp/traducao-antes.h
+          python3 Ferramentas/idioma/gerar.py
+          if ! diff -q /tmp/traducao-antes.h Source/Common/TraducaoEn.h >/dev/null; then
+            echo "::error::TraducaoEn.h esta velho -- rode: python3 Ferramentas/idioma/gerar.py"
+            diff /tmp/traducao-antes.h Source/Common/TraducaoEn.h | head -20
+            exit 1
+          fi
+          echo "tabela em dia"
+
       - name: Configure (Windows)
         if: matrix.os == 'windows-2022'
         shell: bash

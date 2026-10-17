@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Common/Idioma.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "DisplayProcessor.h"
@@ -60,7 +62,8 @@ private:
 
 //==============================================================================
 class DisplayAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                    private juce::Timer
+                                    private juce::Timer,
+                                    private juce::ChangeListener
 {
 public:
     explicit DisplayAudioProcessorEditor (DisplayAudioProcessor&);
@@ -74,14 +77,18 @@ private:
     void refresh (bool force);
     void showSettings();
 
+    /** Reescreve os textos fixos quando o idioma muda com a janela aberta. */
+    void aplicarTextos();
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
+
     DisplayAudioProcessor& processor;
     tl::DarkLookAndFeel lnf;
     tl::LogoBadge lnfLogo;
 
     juce::Label        statusLabel;
-    juce::ToggleButton flashButton { "Flash" };
-    juce::TextButton   clearButton { "Limpar tudo" }, fontDownButton { "A-" }, fontUpButton { "A+" },
-                       settingsButton { "Rede..." };
+    juce::ToggleButton flashButton { tl::tr ("Flash") };
+    juce::TextButton   clearButton { tl::tr ("Limpar tudo") }, fontDownButton { "A-" }, fontUpButton { "A+" },
+                       settingsButton { tl::tr ("Rede...") };
 
     juce::Viewport      sideViewport, chatViewport;
     ParticipantList     participants;

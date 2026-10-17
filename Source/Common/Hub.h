@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include "EnderecoParceiro.h"
+#include "Idioma.h"
 #include "MessageStore.h"
 #include "MessageBus.h"
 #include "HttpServer.h"
@@ -35,6 +36,10 @@ namespace tl
               web (store, pageHtml(), pageHtmlSize())
         {
             loadSettings();
+            // Antes de tryStart e antes de qualquer janela: as janelas
+            // montam os textos no construtor delas, e ja tem que vir na
+            // lingua certa.
+            aplicarIdioma (idiomaEscolhido);
             tryStart();
             startTimer (3000);
             startThread();
@@ -103,6 +108,20 @@ namespace tl
             TL_LOGI ("hub", limpo.isEmpty() ? juce::String ("sem maquina parceira")
                                             : "maquina parceira: " + limpo);
             saveSettings();
+        }
+
+        //-- idioma da interface ------------------------------------------------------
+        /*  Vale para o processo inteiro: Receiver e Display da mesma maquina
+            falam a mesma lingua, e a escolha sobrevive ao fechar o host.    */
+        Idioma getIdioma() const noexcept { return idiomaEscolhido; }
+
+        void setIdioma (Idioma novo)
+        {
+            if (novo == idiomaEscolhido) return;
+            idiomaEscolhido = novo;
+            saveSettings();
+            trocarIdioma (novo);   // troca a tabela e avisa as janelas abertas
+            TL_LOGI ("ui", juce::String ("idioma: ") + (int) novo);
         }
 
         /** true quando a parceira respondeu na ultima tentativa. */
@@ -518,6 +537,8 @@ namespace tl
                 // Padrao true: quem atualiza nao ganha o telao aberto para a
                 // rede sem ter pedido.
                 exigirSalvo  = xml->getBoolAttribute ("exigirCodigo", true);
+                idiomaEscolhido = (Idioma) juce::jlimit (0, 2,
+                                      xml->getIntAttribute ("idioma", 0));
                 { const juce::ScopedLock sl (parceiroLock);
                   parceiro = xml->getStringAttribute ("parceiro", {}).trim(); }
             }
@@ -533,6 +554,7 @@ namespace tl
             xml.setAttribute ("httpPort", httpPort);
             xml.setAttribute ("escritaCelular", escritaSalva);
             xml.setAttribute ("exigirCodigo", exigirSalvo);
+            xml.setAttribute ("idioma", (int) idiomaEscolhido);
             xml.setAttribute ("parceiro", getParceiro());
             getDataDir().createDirectory();
             xml.writeTo (getDataDir().getChildFile ("settings.xml"));
@@ -546,6 +568,7 @@ namespace tl
         juce::CriticalSection filaLock;
         juce::StringArray fila;
         bool exigirSalvo = true;
+        Idioma idiomaEscolhido = Idioma::automatico;
         mutable juce::CriticalSection parceiroLock;
         juce::String parceiro;
         std::atomic<bool> parceiroOnline { false };

@@ -1,4 +1,5 @@
 #include "DisplayEditor.h"
+#include "Common/Idioma.h"
 
 namespace
 {
@@ -78,7 +79,7 @@ void ChatView::paint (juce::Graphics& g)
         g.setColour (on.withAlpha (0.85f));
         juce::String head = e.name;
         if (e.importance == 2) head += "  !";
-        if (e.importance == 3) head += "  !!  URGENTE";
+        if (e.importance == 3) head += juce::String ("  !!  ") + tl::tr ("URGENTE");
         g.drawText (head, 30, y + 6, bubbleW - 120, 14, juce::Justification::left);
         g.setColour (on.withAlpha (0.6f));
         g.drawText (timeString (e.timeMs) + (e.isFinal ? "" : "  ..."), bubble.getRight() - 110, y + 6, 100, 14, juce::Justification::right);
@@ -91,7 +92,7 @@ void ChatView::paint (juce::Graphics& g)
     {
         g.setColour (kDim);
         g.setFont (juce::FontOptions (18.0f));
-        g.drawText ("Nenhuma mensagem ainda. Os Receivers aparecem na barra lateral quando conectarem.",
+        g.drawText (tl::tr ("Nenhuma mensagem ainda. Os Receivers aparecem na barra lateral quando conectarem."),
                     getLocalBounds().reduced (20), juce::Justification::centred);
     }
 }
@@ -128,15 +129,15 @@ void ParticipantList::paint (juce::Graphics& g)
         g.drawText (sub, 40, y + 24, w - 48, 14, juce::Justification::left);
     };
 
-    drawRow (0, kText, "Todos", juce::String (participants.size()) + " canais", selectedId.isEmpty(), true);
+    drawRow (0, kText, tl::tr ("Todos"), juce::String (participants.size()) + tl::tr (" canais"), selectedId.isEmpty(), true);
 
     int y = 44;
     for (auto& p : participants)
     {
         juce::String sub = juce::String (p.messageCount) + " msg";
-        if (p.importance == 3) sub += " - urgente";
-        else if (p.importance == 2) sub += " - importante";
-        if (! p.isOnline (now)) sub += " - offline";
+        if (p.importance == 3) sub += tl::tr (" - urgente");
+        else if (p.importance == 2) sub += tl::tr (" - importante");
+        if (! p.isOnline (now)) sub += tl::tr (" - offline");
         drawRow (y, p.colour, p.name, sub, selectedId == p.id, p.isOnline (now));
         y += rowH;
     }
@@ -210,6 +211,9 @@ DisplayAudioProcessorEditor::DisplayAudioProcessorEditor (DisplayAudioProcessor&
     fontUpButton.onClick   = [this] { processor.fontSize = juce::jmin (72, processor.fontSize + 3); };
     settingsButton.onClick = [this] { showSettings(); };
 
+    tl::AvisoDeIdioma::get().addChangeListener (this);
+    aplicarTextos();
+
     participants.onSelect = [this] (const juce::String& id) { selectedChannel = id; refresh (true); };
     sideViewport.setViewedComponent (&participants, false);
     sideViewport.setScrollBarsShown (true, false);
@@ -224,7 +228,26 @@ DisplayAudioProcessorEditor::DisplayAudioProcessorEditor (DisplayAudioProcessor&
     startTimerHz (30);
 }
 
-DisplayAudioProcessorEditor::~DisplayAudioProcessorEditor() { setLookAndFeel (nullptr); }
+DisplayAudioProcessorEditor::~DisplayAudioProcessorEditor()
+{
+    tl::AvisoDeIdioma::get().removeChangeListener (this);
+    setLookAndFeel (nullptr);
+}
+
+void DisplayAudioProcessorEditor::aplicarTextos()
+{
+    flashButton   .setButtonText (tl::tr ("Flash"));
+    clearButton   .setButtonText (tl::tr ("Limpar tudo"));
+    settingsButton.setButtonText (tl::tr ("Rede..."));
+    refresh (false);          // os baloes e a lista tambem tem texto nosso
+}
+
+void DisplayAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    aplicarTextos();
+    resized();
+    repaint();
+}
 
 void DisplayAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -235,7 +258,7 @@ void DisplayAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRect (getLocalBounds().withTrimmedTop (56).removeFromLeft (220));
     g.setColour (kDim);
     g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    g.drawText ("PARTICIPANTES", 16, 62, 200, 14, juce::Justification::left);
+    g.drawText (tl::tr ("PARTICIPANTES"), 16, 62, 200, 14, juce::Justification::left);
 }
 
 void DisplayAudioProcessorEditor::resized()
@@ -298,11 +321,11 @@ void DisplayAudioProcessorEditor::timerCallback()
     auto& hub = *processor.hub;
     juce::String s;
     if (hub.isBusPrimary())      s = "UDP " + juce::String (hub.getBusPort()) + " ok";
-    else if (hub.isMirroring())  s = "espelhando o Display principal desta maquina";
-    else                         s = "UDP " + juce::String (hub.getBusPort()) + " em uso por outro programa - tentando...";
+    else if (hub.isMirroring())  s = tl::tr ("espelhando o Display principal desta maquina");
+    else                         s = "UDP " + juce::String (hub.getBusPort()) + tl::tr (" em uso por outro programa - tentando...");
 
     if (hub.isWebPrimary())
-        s += "   |   Celular/tablet: " + hub.getWebAddressHint() + "   (" + juce::String (hub.getWebClients()) + " conectados)";
+        s += juce::String ("   |   ") + tl::tr ("Celular/tablet: ") + hub.getWebAddressHint() + "   (" + juce::String (hub.getWebClients()) + tl::tr (" conectados)");
     else if (hub.isMirroring())
         s += "   |   Celular/tablet: " + hub.getWebAddressHint();
     if (statusLabel.getText() != s) statusLabel.setText (s, juce::dontSendNotification);
@@ -333,21 +356,23 @@ void DisplayAudioProcessorEditor::showSettings()
 {
     struct Panel : juce::Component
     {
-        juce::Label l1 { {}, "Porta UDP (Receivers):" }, l2 { {}, "Porta web (celular):" };
-        juce::Label l3 { {}, "Outro computador (IP):" }, ajuda, situacao;
+        juce::Label l1 { {}, tl::tr ("Porta UDP (Receivers):") }, l2 { {}, tl::tr ("Porta web (celular):") };
+        juce::Label l3 { {}, tl::tr ("Outro computador (IP):") }, l4, ajuda, situacao;
+        juce::ComboBox idioma;
         juce::TextEditor bus, http, parceiro;
-        juce::ToggleButton webOn { "Servidor web ligado" };
-        juce::TextButton apply { "Aplicar" };
+        juce::ToggleButton webOn { tl::tr ("Servidor web ligado") };
+        juce::TextButton apply { tl::tr ("Aplicar") };
         Panel()
         {
             for (auto* c : std::initializer_list<juce::Component*> {
-                     &l1, &l2, &l3, &ajuda, &situacao, &bus, &http, &parceiro, &webOn, &apply })
+                     &l1, &l2, &l3, &l4, &ajuda, &situacao, &bus, &http, &parceiro,
+                     &idioma, &webOn, &apply })
                 addAndMakeVisible (c);
 
             ajuda.setFont (juce::FontOptions (11.0f));
             ajuda.setColour (juce::Label::textColourId, tl::col::dim);
             ajuda.setJustificationType (juce::Justification::topLeft);
-            ajuda.setText (juce::String (juce::CharPointer_UTF8 (
+            ajuda.setText (tl::tr ((
                 "Mostra aqui tamb\xc3\xa9m os Receivers daquele computador. Serve para o "
                 "t\xc3\xa9" "cnico de P.A. e o de monitor conversarem entre dois PCs: cada "
                 "um aponta para o outro. Vale tanto neste plugin dentro do host "
@@ -358,7 +383,7 @@ void DisplayAudioProcessorEditor::showSettings()
             situacao.setFont (juce::FontOptions (11.0f));
             situacao.setJustificationType (juce::Justification::centredLeft);
 
-            setSize (340, 290);
+            setSize (340, 326);
         }
         void resized() override
         {
@@ -373,6 +398,9 @@ void DisplayAudioProcessorEditor::showSettings()
             situacao.setBounds (r.removeFromTop (16));
             ajuda.setBounds (r.removeFromTop (72));
             r.removeFromTop (6);
+            r.removeFromTop (4);
+            auto d = r.removeFromTop (26); l4.setBounds (d.removeFromLeft (170)); idioma.setBounds (d);
+            r.removeFromTop (8);
             apply.setBounds (r.removeFromTop (28));
         }
     };
@@ -382,16 +410,33 @@ void DisplayAudioProcessorEditor::showSettings()
     panel->http.setText (juce::String (processor.hub->getHttpPort()));
     panel->webOn.setVisible (false);
 
+    /*  Idioma tambem aqui: quem usa so o aplicativo do Display, sem o
+        Receiver aberto, nao teria por onde trocar.                       */
+    panel->l4.setText (tl::tr ("Idioma"), juce::dontSendNotification);
+    for (int i = 0; i < 3; ++i)
+        panel->idioma.addItem (tl::rotuloIdioma (tl::idiomaDeIndice (i)), i + 1);
+    panel->idioma.setSelectedItemIndex (tl::indiceDeIdioma (processor.hub->getIdioma()),
+                                        juce::dontSendNotification);
+    {
+        juce::Component::SafePointer<DisplayAudioProcessorEditor> eu (this);
+        auto* cx = panel.get();
+        cx->idioma.onChange = [eu, cx]
+        {
+            if (eu != nullptr)
+                eu->processor.hub->setIdioma (tl::idiomaDeIndice (cx->idioma.getSelectedItemIndex()));
+        };
+    }
+
     panel->parceiro.setText (processor.hub->getParceiro());
-    panel->parceiro.setTextToShowWhenEmpty ("ex.: 192.168.0.20 ou 192.168.0.20:47801", tl::col::dim);
+    panel->parceiro.setTextToShowWhenEmpty (tl::tr ("ex.: 192.168.0.20 ou 192.168.0.20:47801"), tl::col::dim);
 
     {
         const auto host = processor.hub->getParceiro();
         const bool online = processor.hub->isParceiroOnline();
         panel->situacao.setText (
             host.isEmpty() ? juce::String()
-                           : (online ? juce::String (juce::CharPointer_UTF8 ("conectado a ")) + host
-                                     : juce::String (juce::CharPointer_UTF8 ("sem resposta de ")) + host),
+                           : (online ? tl::tr (("conectado a ")) + host
+                                     : tl::tr (("sem resposta de ")) + host),
             juce::dontSendNotification);
         panel->situacao.setColour (juce::Label::textColourId,
                                    online ? juce::Colour (0xff3ddc84) : juce::Colour (0xffff6b6b));

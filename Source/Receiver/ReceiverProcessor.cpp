@@ -1,4 +1,5 @@
 #include "ReceiverProcessor.h"
+#include "Common/Idioma.h"
 #include "Common/Vocabulario.h"
 #include "Common/Modelos.h"
 #include "ReceiverEditor.h"
@@ -430,8 +431,7 @@ void TranscriberLiveAudioProcessor::timerCallback()
                     procurar na tela dois nomes que nao existem mais la.
                     Os dois continuam no log, na linha acima, que e o que
                     o suporte le.                                        */
-                trocaAutomatica = juce::String (juce::CharPointer_UTF8 (
-                    "aliviei o processamento"));
+                trocaAutomatica = tl::tr ("aliviei o processamento");
                 selectModel (leve);
             }
             else
@@ -443,8 +443,7 @@ void TranscriberLiveAudioProcessor::timerCallback()
                 TL_LOGW ("modelo", selectedModel + " ja e o modelo mais leve instalado "
                          "-- ligando o modo economico (mais rapido, reconhece pior)");
                 engine.ativarModoEconomico();
-                trocaAutomatica = juce::String (juce::CharPointer_UTF8 (
-                    "liguei o modo econ\xc3\xb4mico"));
+                trocaAutomatica = tl::tr ("liguei o modo econ\xc3\xb4mico");
             }
         }
     }

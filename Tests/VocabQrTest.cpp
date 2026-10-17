@@ -19,6 +19,7 @@
 #include "Common/HttpServer.h"
 #include "Common/MessageStore.h"
 #include "Common/EnderecoParceiro.h"
+#include "Common/TraducaoEn.h"
 #include <juce_core/juce_core.h>
 #include <cstdio>
 
@@ -460,6 +461,46 @@ static void testeEscritaWeb()
 
 /*  O campo da maquina parceira recebe o que o tecnico tem na mao no meio do
     show: um IP, um IP com porta, ou a URL inteira copiada do navegador.    */
+
+/*  A tabela de ingles e gerada: o risco nao e erro de compilacao, e texto
+    que some calado da tela do cliente. Entao conferimos tres coisas que o
+    gerador poderia estragar sem reclamar: a tabela carrega, uma chave com
+    acento casa, e nenhuma traducao ficou igual ao portugues por descuido. */
+static void testeIdioma()
+{
+    printf ("idioma (tabela de ingles)...\n");
+
+    const auto tabela = tl::tabelaIngles();
+    checa (tabela.isNotEmpty(), "a tabela de ingles veio vazia");
+
+    juce::LocalisedStrings::setCurrentMappings (
+        new juce::LocalisedStrings (tabela, false));
+
+    struct Caso { const char* pt; const char* en; };
+    const Caso casos[] = {
+        { "Nome", "Name" },
+        { "Limpar tudo", "Clear all" },
+        { "Licen\xc3\xa7" "a", "License" },                 // chave com acento
+        { "Sensib. VAD", "VAD sens." },
+        { "Outra rede (%1 de %2)", "Other network (%1 of %2)" },
+    };
+
+    for (auto& c : casos)
+    {
+        const auto saiu = tl::tr (c.pt);
+        checa (saiu == juce::String (c.en),
+               juce::String ("traduzir \"") + c.pt + "\" deu \"" + saiu
+               + "\", esperado \"" + c.en + "\"");
+    }
+
+    // Texto fora da tabela tem que voltar em portugues, nao virar chave crua.
+    checa (tl::tr ("isto nao esta na tabela") == "isto nao esta na tabela",
+           "texto sem traducao deveria voltar como esta");
+
+    juce::LocalisedStrings::setCurrentMappings (nullptr);
+    checa (tl::tr ("Nome") == "Nome", "sem tabela, o texto tem que ficar em portugues");
+}
+
 static void testeEnderecoParceiro()
 {
     printf ("endereco da maquina parceira...\n");
@@ -578,6 +619,7 @@ int main()
     testeQr();
     testeModelos();
     testeEscritaWeb();
+    testeIdioma();
     testeEnderecoParceiro();
     testeParceiro();
 

@@ -1,6 +1,7 @@
 #include "ReceiverEditor.h"
 #include "Common/Trace.h"
 #include "Common/Log.h"
+#include "Common/Idioma.h"
 
 namespace
 {
@@ -9,7 +10,10 @@ namespace
     const juce::Colour kText  = tl::col::text;
     const juce::Colour kDim   = tl::col::dim;
 
-    juce::String utf8 (const char* s) { return juce::String (juce::CharPointer_UTF8 (s)); }
+    /*  Texto de tela: passa pela traducao. A chave e o proprio
+        portugues, entao o codigo continua legivel e um texto sem
+        traducao aparece em portugues em vez de virar chave crua.  */
+    juce::String tr (const char* s) { return tl::tr (s); }
 
     constexpr int kHeaderH = 44;
     constexpr int kLogoH   = 30;
@@ -57,23 +61,23 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     };
 
     initLabel (statusLabel,     "", 12.0f, kDim);
-    initLabel (speechLabel,     "FALA", 12.0f, kDim, juce::Justification::centred);
+    initLabel (speechLabel,     tl::tr ("FALA"), 12.0f, kDim, juce::Justification::centred);
     initLabel (lastLineLabel,   "", 15.0f, kDim);
-    initLabel (nameLabel,       "Nome", 12.0f, kDim);
-    initLabel (importanceLabel, "Import.", 12.0f, kDim);
-    initLabel (modoLabel,       "Modo", 12.0f, kDim);
-    initLabel (gateLabel,       "Gate", 12.0f, kDim, juce::Justification::centred);
-    initLabel (vadLabel,        "Sensib. VAD", 12.0f, kDim, juce::Justification::centred);
-    initLabel (holdLabel,       "Fim de frase", 12.0f, kDim, juce::Justification::centred);
+    initLabel (nameLabel,       tl::tr ("Nome"), 12.0f, kDim);
+    initLabel (importanceLabel, tl::tr ("Import."), 12.0f, kDim);
+    initLabel (modoLabel,       tl::tr ("Modo"), 12.0f, kDim);
+    initLabel (gateLabel,       tl::tr ("Gate"), 12.0f, kDim, juce::Justification::centred);
+    initLabel (vadLabel,        tl::tr ("Sensib. VAD"), 12.0f, kDim, juce::Justification::centred);
+    initLabel (holdLabel,       tl::tr ("Fim de frase"), 12.0f, kDim, juce::Justification::centred);
 
     // ---- identidade ------------------------------------------------------------
     nameEditor.setFont (juce::FontOptions (14.0f));
-    nameEditor.setTextToShowWhenEmpty ("ex.: Cantor, Baixo...", kDim);
+    nameEditor.setTextToShowWhenEmpty (tl::tr ("ex.: Cantor, Baixo..."), kDim);
     nameEditor.onReturnKey = [this] { applyIdentityFromUi(); };
     nameEditor.onFocusLost = [this] { applyIdentityFromUi(); };
     addAndMakeVisible (nameEditor);
 
-    importanceBox.addItemList ({ "Normal", "Importante", "Urgente" }, 1);
+    importanceBox.addItemList ({ tl::tr ("Normal"), tl::tr ("Importante"), tl::tr ("Urgente") }, 1);
     importanceBox.onChange = [this] { applyIdentityFromUi(); };
     addAndMakeVisible (importanceBox);
 
@@ -102,12 +106,12 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     addAndMakeVisible (colourButton);
 
     qrButton.onClick = [this] { showQr(); };
-    qrButton.setTooltip (juce::String (juce::CharPointer_UTF8 (
+    qrButton.setTooltip (tl::tr ((
         "Mostra um QR Code para abrir o Display no celular ou tablet")));
     addAndMakeVisible (qrButton);
 
     logButton.onClick = [this] { showLog(); };
-    logButton.setTooltip ("Abre a pasta de logs e copia o diagnostico para colar no suporte");
+    logButton.setTooltip (tl::tr ("Abre a pasta de logs e copia o diagnostico para colar no suporte"));
     addAndMakeVisible (logButton);
 
     licenseButton.onClick = [this]
@@ -154,6 +158,22 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     addAndMakeVisible (modoBox);
     { TL_TRACE_STEP ("editor: modos"); refreshModoUi(); }
 
+    /*  ---- idioma ----------------------------------------------------------
+        O padrao segue a maquina, e esta caixa manda por cima. So o automatico
+        seria armadilha: tecnico brasileiro com o sistema em ingles abriria o
+        plugin em ingles sem ter pedido.
+
+        Vale para o processo todo (fica no Hub), entao o Display da mesma
+        maquina muda junto.                                                  */
+    idiomaBox.onChange = [this]
+    {
+        processor.hub->setIdioma (tl::idiomaDeIndice (idiomaBox.getSelectedItemIndex()));
+    };
+    addAndMakeVisible (idiomaBox);
+
+    tl::AvisoDeIdioma::get().addChangeListener (this);
+    aplicarTextos();
+
     // ---- medidor + knobs ---------------------------------------------------------
     addAndMakeVisible (meter);
 
@@ -182,13 +202,74 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     { TL_TRACE_STEP ("editor: painel de licenca"); refreshLicenseUi(); }
 
     if (processor.getInitError().isNotEmpty())
-        statusLabel.setText ("Falha na inicializacao: " + processor.getInitError(), juce::dontSendNotification);
+        statusLabel.setText (tl::tr ("Falha na inicializa\xc3\xa7\xc3\xa3o: ") + processor.getInitError(), juce::dontSendNotification);
 
     startTimerHz (15);
     TL_TRACE ("--- editor: pronto ---");
 }
 
-TranscriberLiveAudioProcessorEditor::~TranscriberLiveAudioProcessorEditor() { setLookAndFeel (nullptr); }
+TranscriberLiveAudioProcessorEditor::~TranscriberLiveAudioProcessorEditor()
+{
+    tl::AvisoDeIdioma::get().removeChangeListener (this);
+    setLookAndFeel (nullptr);
+}
+
+/*  Textos fixos da janela, na lingua atual.
+
+    Tudo que e texto escrito por nos passa por aqui -- inclusive o que o
+    construtor ja escreveu. Repetir e barato e garante que nada fique para
+    tras quando o idioma muda com a janela aberta.                          */
+void TranscriberLiveAudioProcessorEditor::aplicarTextos()
+{
+    speechLabel    .setText (tl::tr ("FALA"),         juce::dontSendNotification);
+    nameLabel      .setText (tl::tr ("Nome"),         juce::dontSendNotification);
+    importanceLabel.setText (tl::tr ("Import."),      juce::dontSendNotification);
+    modoLabel      .setText (tl::tr ("Modo"),         juce::dontSendNotification);
+    gateLabel      .setText (tl::tr ("Gate"),         juce::dontSendNotification);
+    vadLabel       .setText (tl::tr ("Sensib. VAD"),  juce::dontSendNotification);
+    holdLabel      .setText (tl::tr ("Fim de frase"), juce::dontSendNotification);
+
+    nameEditor.setTextToShowWhenEmpty (tl::tr ("ex.: Cantor, Baixo..."), kDim);
+
+    colourButton  .setButtonText (tl::tr ("Cor"));
+    licenseButton .setButtonText (tl::tr ("Licen\xc3\xa7" "a"));
+    flashButton   .setButtonText (tl::tr ("Flash"));
+    partialsButton.setButtonText (tl::tr ("Parciais"));
+
+    qrButton .setTooltip (tl::tr ("Mostra um QR Code para abrir o Display no celular ou tablet"));
+    logButton.setTooltip (tl::tr ("Abre a pasta de logs e copia o diagnostico para colar no suporte"));
+
+    // Listas: a escolha do usuario tem que sobreviver a troca de lingua.
+    {
+        const int sel = importanceBox.getSelectedId();
+        importanceBox.clear (juce::dontSendNotification);
+        importanceBox.addItemList ({ tl::tr ("Normal"), tl::tr ("Importante"), tl::tr ("Urgente") }, 1);
+        if (sel > 0) importanceBox.setSelectedId (sel, juce::dontSendNotification);
+    }
+    {
+        const int sel = modoBox.getSelectedItemIndex();
+        modoBox.clear (juce::dontSendNotification);
+        for (int i = 0; i < 3; ++i)
+            modoBox.addItem (tl::modelos::rotuloModo (tl::modelos::modoDeIndice (i)), i + 1);
+        if (sel >= 0) modoBox.setSelectedItemIndex (sel, juce::dontSendNotification);
+        modoBox.setTooltip (tl::modelos::detalheModo (processor.getModo()));
+    }
+    {
+        idiomaBox.clear (juce::dontSendNotification);
+        for (int i = 0; i < 3; ++i)
+            idiomaBox.addItem (tl::rotuloIdioma (tl::idiomaDeIndice (i)), i + 1);
+        idiomaBox.setSelectedItemIndex (tl::indiceDeIdioma (processor.hub->getIdioma()),
+                                        juce::dontSendNotification);
+        idiomaBox.setTooltip (tl::tr ("Idioma da interface \xe2\x80\x94 Interface language"));
+    }
+}
+
+void TranscriberLiveAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    aplicarTextos();
+    resized();
+    repaint();
+}
 
 //==============================================================================
 void TranscriberLiveAudioProcessorEditor::paint (juce::Graphics& g)
@@ -242,6 +323,10 @@ void TranscriberLiveAudioProcessorEditor::resized()
     // linha 2: modo
     auto row2 = r.removeFromTop (30);
     modoLabel.setBounds (row2.removeFromLeft (42));
+    // O seletor de idioma rouba a direita desta linha: a caixa do modo tem
+    // tres itens curtos e sobrava largura demais para ela.
+    idiomaBox.setBounds (row2.removeFromRight (150).reduced (0, 2));
+    row2.removeFromRight (8);
     modoBox.setBounds (row2.reduced (0, 2));
 
     r.removeFromTop (10);
@@ -306,7 +391,7 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
     if (! lastLicensed)
     {
         if (statusLabel.getText().isEmpty())
-            statusLabel.setText (utf8 ("Sem licen\xc3\xa7" "a — o \xc3\xa1udio passa intacto, mas nada \xc3\xa9 transcrito."), juce::dontSendNotification);
+            statusLabel.setText (tr ("Sem licen\xc3\xa7" "a \xe2\x80\x94 o \xc3\xa1udio passa intacto, mas nada \xc3\xa9 transcrito."), juce::dontSendNotification);
         return;
     }
 
@@ -329,16 +414,16 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
         vem vazio, e a barra fica limpa.                                       */
     juce::String s = eng.getStatus();
     if (eng.isTranscribing())
-        s += s.isEmpty() ? juce::String ("transcrevendo...")
-                         : juce::String ("  |  transcrevendo...");
+        s += s.isEmpty() ? tl::tr ("transcrevendo...")
+                         : juce::String ("  |  ") + tl::tr ("transcrevendo...");
 
     /*  Quando o Automatico alivia sozinho, o tecnico PRECISA ver -- senao ele
         nota a transcricao mudando de qualidade no meio do show e conclui que
         o plugin esta com defeito. Fica na frente de tudo: naquele momento e
         a informacao mais importante da tela.                                */
     if (const auto troca = processor.getTrocaAutomatica(); troca.isNotEmpty())
-        s = utf8 ("Autom\xc3\xa1tico: ") + troca
-          + utf8 (" \xe2\x80\x94 esta m\xc3\xa1quina n\xc3\xa3o acompanhava o tempo real.")
+        s = tr ("Autom\xc3\xa1tico: ") + troca
+          + tr (" \xe2\x80\x94 esta m\xc3\xa1quina n\xc3\xa3o acompanhava o tempo real.")
           + (s.isEmpty() ? juce::String() : juce::String ("   |   ") + s);
 
     if (statusLabel.getText() != s) statusLabel.setText (s, juce::dontSendNotification);
@@ -379,7 +464,7 @@ void TranscriberLiveAudioProcessorEditor::applyIdentityFromUi()
 {
     auto id = processor.getIdentity();
     id.name = nameEditor.getText().trim();
-    if (id.name.isEmpty()) id.name = "Canal";
+    if (id.name.isEmpty()) id.name = tl::tr ("Canal");
     id.importance = juce::jmax (1, importanceBox.getSelectedId());
     id.flash = flashButton.getToggleState();
     processor.setIdentity (id);
@@ -402,7 +487,7 @@ void TranscriberLiveAudioProcessorEditor::showLog()
     {
         juce::NativeMessageBox::showMessageBoxAsync (
             juce::MessageBoxIconType::WarningIcon, "Log",
-            utf8 ("O log est\xc3\xa1 desligado (existe um arquivo \"sem-log\" na pasta de dados, "
+            tr ("O log est\xc3\xa1 desligado (existe um arquivo \"sem-log\" na pasta de dados, "
                   "ou a pasta n\xc3\xa3o tem permiss\xc3\xa3o de escrita)."), this);
         return;
     }
@@ -414,7 +499,7 @@ void TranscriberLiveAudioProcessorEditor::showLog()
 
     juce::NativeMessageBox::showMessageBoxAsync (
         juce::MessageBoxIconType::InfoIcon, "Log",
-        utf8 ("Diagn\xc3\xb3stico copiado — \xc3\xa9 s\xc3\xb3 colar no WhatsApp ou no e-mail do suporte.\n\n"
+        tr ("Diagn\xc3\xb3stico copiado \xe2\x80\x94 \xc3\xa9 s\xc3\xb3 colar no WhatsApp ou no e-mail do suporte.\n\n"
               "A pasta com os arquivos completos foi aberta:\n")
             + log.getFolder().getFullPathName(), this);
 }
@@ -468,12 +553,12 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     struct Panel : juce::Component
     {
         juce::Label        titulo, endereco, aviso;
-        juce::TextButton   copiar { "Copiar endere" + juce::String (juce::CharPointer_UTF8 ("\xc3\xa7" "o")) };
-        juce::ToggleButton escrever { juce::String (juce::CharPointer_UTF8 (
+        juce::TextButton   copiar { tl::tr ("Copiar endere\xc3\xa7" "o") };
+        juce::ToggleButton escrever { tl::tr ((
                                "Celulares podem escrever")) };
-        juce::ToggleButton semQr { juce::String (juce::CharPointer_UTF8 (
+        juce::ToggleButton semQr { tl::tr ((
                                "Sem precisar do QR (vale digitar o endere\xc3\xa7" "o)")) };
-        juce::TextButton   novoCodigo { juce::String (juce::CharPointer_UTF8 ("Trocar c\xc3\xb3" "digo")) };
+        juce::TextButton   novoCodigo { tl::tr (("Trocar c\xc3\xb3" "digo")) };
         juce::TextButton   outraRede;
         bool               temOutraRede = false;
         tl::QrCode         qr;
@@ -537,11 +622,15 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     if (p->temOutraRede)
     {
         const int atual = juce::jlimit (0, todosIps.size() - 1, enderecoEscolhido);
-        p->outraRede.setButtonText (juce::String (juce::CharPointer_UTF8 ("Outra rede ("))
-                                    + juce::String (atual + 1) + " de " + juce::String (todosIps.size()) + ")");
-        p->outraRede.setTooltip (juce::String (juce::CharPointer_UTF8 (
-            "Esta mÃ¡quina tem mais de uma rede. Se o celular nÃ£o abrir a pÃ¡gina, "
-            "troque aqui atÃ© achar a rede em que ele estÃ¡.")));
+        /*  Frase inteira na tabela, nao pedaco por pedaco: "de" entre dois
+            numeros nao e "of" em toda lingua, e tradutor que recebe "Outra
+            rede (" solto nao tem como saber o que vem depois.             */
+        p->outraRede.setButtonText (tl::tr ("Outra rede (%1 de %2)")
+                                        .replace ("%1", juce::String (atual + 1))
+                                        .replace ("%2", juce::String (todosIps.size())));
+        p->outraRede.setTooltip (tl::tr ((
+            "Esta m\xc3\xa1quina tem mais de uma rede. Se o celular n\xc3\xa3o abrir a p\xc3\xa1gina, "
+            "troque aqui at\xc3\xa9 achar a rede em que ele est\xc3\xa1.")));
         p->addAndMakeVisible (p->outraRede);
     }
 
@@ -566,16 +655,16 @@ void TranscriberLiveAudioProcessorEditor::showQr()
         de producao tudo bem; num Wi-Fi aberto de casa de show, nao.          */
     p->semQr.setToggleState (! processor.hub->isExigirCodigo(), juce::dontSendNotification);
     p->semQr.setEnabled (processor.hub->isEscritaPermitida());
-    p->semQr.setTooltip (juce::String (juce::CharPointer_UTF8 (
+    p->semQr.setTooltip (tl::tr ((
         "Para PC, que nao le QR Code. Com isto ligado, quem digitar o endere\xc3\xa7" "o "
         "no navegador tamb\xc3\xa9m escreve \xe2\x80\x94 inclusive quem s\xc3\xb3 descobriu o "
         "endere\xc3\xa7" "o na rede do local.")));
 
     p->escrever.setToggleState (processor.hub->isEscritaPermitida(), juce::dontSendNotification);
-    p->escrever.setTooltip (juce::String (juce::CharPointer_UTF8 (
+    p->escrever.setTooltip (tl::tr ((
         "Desligado, ningu\xc3\xa9m escreve pelo celular, nem quem j\xc3\xa1 leu o QR.")));
 
-    p->novoCodigo.setTooltip (juce::String (juce::CharPointer_UTF8 (
+    p->novoCodigo.setTooltip (tl::tr ((
         "Sorteia um c\xc3\xb3" "digo novo: os aparelhos que j\xc3\xa1 entraram param de "
         "escrever at\xc3\xa9 lerem o QR de novo. Serve para cortar o acesso de algu\xc3\xa9m "
         "sem desligar a fun\xc3\xa7\xc3\xa3o para todos.")));
@@ -627,8 +716,8 @@ void TranscriberLiveAudioProcessorEditor::showQr()
 
     if (url.isEmpty())
     {
-        p->titulo.setText ("Sem rede", juce::dontSendNotification);
-        p->aviso.setText (juce::String (juce::CharPointer_UTF8 (
+        p->titulo.setText (tr ("Sem rede"), juce::dontSendNotification);
+        p->aviso.setText (tl::tr ((
             "Esta m\xc3\xa1quina n\xc3\xa3o tem endere\xc3\xa7o de rede local. "
             "Conecte no mesmo Wi-Fi do celular.")), juce::dontSendNotification);
         p->copiar.setEnabled (false);
@@ -638,10 +727,10 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     {
         // Endereco longo demais para as versoes que geramos. Nao acontece com
         // IP de rede local, mas se acontecer o tecnico ainda consegue digitar.
-        p->titulo.setText ("Endere" + juce::String (juce::CharPointer_UTF8 ("\xc3\xa7" "o")) + " para o celular",
+        p->titulo.setText (tl::tr ("Endere\xc3\xa7" "o para o celular"),
                            juce::dontSendNotification);
         p->endereco.setText (url, juce::dontSendNotification);
-        p->aviso.setText (juce::String (juce::CharPointer_UTF8 (
+        p->aviso.setText (tl::tr ((
             "N\xc3\xa3o consegui gerar o QR para este endere\xc3\xa7o. Digite no navegador.")),
             juce::dontSendNotification);
         p->setSize (260, 170);
@@ -653,7 +742,7 @@ void TranscriberLiveAudioProcessorEditor::showQr()
         const auto id = processor.getIdentity();
         const bool temCodigo = url.contains ("?k=");
 
-        p->titulo.setText (juce::String (juce::CharPointer_UTF8 (
+        p->titulo.setText (tl::tr ((
             "Aponte a c\xc3\xa2mera do celular")), juce::dontSendNotification);
 
         // O endereco mostrado sai sem o codigo. Ele serve para quem vai
@@ -663,14 +752,14 @@ void TranscriberLiveAudioProcessorEditor::showQr()
 
         p->aviso.setText (
             id.remoteHost.isNotEmpty()
-                ? juce::String (juce::CharPointer_UTF8 (
+                ? tl::tr ((
                     "Display em outra m\xc3\xa1quina: aqui o QR abre s\xc3\xb3 para leitura. "
                     "Para escrever, use o QR do Receiver daquela m\xc3\xa1quina."))
             : temCodigo
-                ? juce::String (juce::CharPointer_UTF8 (
+                ? tl::tr ((
                     "Quem ler o QR pode escrever no tel\xc3\xa3o. Quem s\xc3\xb3 digitar o "
                     "endere\xc3\xa7o v\xc3\xaa a conversa, mas n\xc3\xa3o escreve."))
-                : juce::String (juce::CharPointer_UTF8 (
+                : tl::tr ((
                     "Ainda n\xc3\xa3o peguei o c\xc3\xb3" "digo de escrita do Display. "
                     "Abra de novo em alguns segundos.")),
             juce::dontSendNotification);

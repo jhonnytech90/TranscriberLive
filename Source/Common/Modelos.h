@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Idioma.h"
+
 #include <juce_core/juce_core.h>
 
 namespace tl::modelos
@@ -66,7 +68,7 @@ inline const Perfil* perfilDe (const juce::String& nomeArquivo)
 inline juce::String rotulo (const juce::String& nomeArquivo)
 {
     if (const auto* p = perfilDe (nomeArquivo))
-        return juce::String (juce::CharPointer_UTF8 (p->rotulo));
+        return tl::tr ((p->rotulo));
 
     return nomeArquivo;
 }
@@ -75,8 +77,8 @@ inline juce::String rotulo (const juce::String& nomeArquivo)
 inline juce::String descricao (const juce::String& nomeArquivo)
 {
     if (const auto* p = perfilDe (nomeArquivo))
-        return juce::String (juce::CharPointer_UTF8 (p->rotulo)) + " \xe2\x80\x94 "
-             + juce::String (juce::CharPointer_UTF8 (p->detalhe))
+        return tl::tr ((p->rotulo)) + " \xe2\x80\x94 "
+             + tl::tr ((p->detalhe))
              + "  (" + nomeArquivo + ")";
 
     return nomeArquivo;
@@ -119,10 +121,10 @@ inline juce::String rotuloModo (Modo m)
 {
     switch (m)
     {
-        case Modo::desempenho: return juce::String (juce::CharPointer_UTF8 ("Desempenho"));
-        case Modo::precisao:   return juce::String (juce::CharPointer_UTF8 ("Precis\xc3\xa3o"));
+        case Modo::desempenho: return tl::tr (("Desempenho"));
+        case Modo::precisao:   return tl::tr (("Precis\xc3\xa3o"));
         case Modo::automatico:
-        default:               return juce::String (juce::CharPointer_UTF8 ("Autom\xc3\xa1tico"));
+        default:               return tl::tr (("Autom\xc3\xa1tico"));
     }
 }
 
@@ -131,16 +133,16 @@ inline juce::String detalheModo (Modo m)
     switch (m)
     {
         case Modo::desempenho:
-            return juce::String (juce::CharPointer_UTF8 (
+            return tl::tr ((
                 "Responde o mais r\xc3\xa1pido poss\xc3\xadvel. Erra mais palavra, "
                 "mas n\xc3\xa3o atrasa nem na m\xc3\xa1quina mais fraca."));
         case Modo::precisao:
-            return juce::String (juce::CharPointer_UTF8 (
+            return tl::tr ((
                 "O melhor reconhecimento dispon\xc3\xadvel. Em m\xc3\xa1quina fraca "
                 "a legenda pode atrasar \xe2\x80\x94 e n\xc3\xa3o vai se rebaixar sozinho."));
         case Modo::automatico:
         default:
-            return juce::String (juce::CharPointer_UTF8 (
+            return tl::tr ((
                 // "Come" + c-cedilha + "a": o literal e cortado porque o escape
                 // do cedilha seguido da letra "a" seria lido como um escape de
                 // tres digitos, que estoura o byte e nao compila no MSVC.

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Common/Idioma.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "ReceiverProcessor.h"
@@ -28,7 +30,8 @@ private:
 //==============================================================================
 /** Editor compacto do Receiver. */
 class TranscriberLiveAudioProcessorEditor : public juce::AudioProcessorEditor,
-                                            private juce::Timer
+                                            private juce::Timer,
+                                            private juce::ChangeListener
 {
 public:
     explicit TranscriberLiveAudioProcessorEditor (TranscriberLiveAudioProcessor&);
@@ -48,6 +51,14 @@ private:
     void refreshLicenseUi();
     void setControlsVisible (bool);
 
+    /*  Reescreve os textos fixos da janela na lingua atual.
+
+        Chamada no construtor e de novo quando o idioma muda. Sem ela, trocar
+        o idioma so valeria na proxima abertura -- e o usuario concluiria que
+        o seletor nao funciona.                                            */
+    void aplicarTextos();
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
+
     TranscriberLiveAudioProcessor& processor;
     tl::DarkLookAndFeel lnf;
     tl::LogoBadge logo;
@@ -55,12 +66,9 @@ private:
     juce::Label        statusLabel, speechLabel, lastLineLabel;
     juce::Label        nameLabel, importanceLabel, modoLabel, gateLabel, vadLabel, holdLabel;
     juce::TextEditor   nameEditor;
-    juce::TextButton   colourButton { "Cor" },
-                       licenseButton { juce::String (juce::CharPointer_UTF8 ("Licen\xc3\xa7" "a")) },
-                       logButton { "Log" },
-                       qrButton { "QR" };
-    juce::ComboBox     importanceBox, modoBox;
-    juce::ToggleButton flashButton { "Flash" }, partialsButton { "Parciais" };
+    juce::TextButton   colourButton, licenseButton, logButton { "Log" }, qrButton { "QR" };
+    juce::ComboBox     importanceBox, modoBox, idiomaBox;
+    juce::ToggleButton flashButton { "Flash" }, partialsButton;
     LevelMeter         meter;
     juce::Slider       gateSlider, vadSlider, holdSlider;
     tl::LicensePanel   licensePanel;

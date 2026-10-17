@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "License.h"
+#include "Idioma.h"
 #include "DarkLookAndFeel.h"
 
 namespace tl
@@ -28,9 +29,9 @@ namespace tl
                 addAndMakeVisible (l);
             };
 
-            label (title,    juce::String (juce::CharPointer_UTF8 ("LICEN\xc3\x87" "A")), 14.0f, col::text, true);
-            label (idLabel,  juce::String (juce::CharPointer_UTF8 ("ID desta m\xc3\xa1quina")), 12.0f, col::dim);
-            label (keyLabel, juce::String (juce::CharPointer_UTF8 ("Cole aqui a chave que voc\xc3\xaa recebeu")), 12.0f, col::dim);
+            label (title,    tl::tr (("LICEN\xc3\x87" "A")), 14.0f, col::text, true);
+            label (idLabel,  tl::tr (("ID desta m\xc3\xa1quina")), 12.0f, col::dim);
+            label (keyLabel, tl::tr (("Cole aqui a chave que voc\xc3\xaa recebeu")), 12.0f, col::dim);
             label (status,   "", 12.0f, col::dim);
             status.setJustificationType (juce::Justification::topLeft);
 
@@ -42,7 +43,7 @@ namespace tl
             copyButton.onClick = [this]
             {
                 juce::SystemClipboard::copyTextToClipboard (License::getMachineId());
-                setStatus (juce::String (juce::CharPointer_UTF8 ("ID copiado — mande para o desenvolvedor junto com seu nome e e-mail.")), false);
+                setStatus (tl::tr (("ID copiado \xe2\x80\x94 mande para o desenvolvedor junto com seu nome e e-mail.")), false);
             };
             addAndMakeVisible (copyButton);
 
@@ -80,12 +81,12 @@ namespace tl
             if (info.valid)
             {
                 juce::String s;
-                s << juce::String (juce::CharPointer_UTF8 ("Ativo. Licenciado para ")) << info.name;
+                s << tl::tr (("Ativo. Licenciado para ")) << info.name;
                 if (info.email.isNotEmpty()) s << " <" << info.email << ">";
-                s << juce::newLine << "serial " << info.serial;
-                if (info.issued.isNotEmpty())  s << juce::String (juce::CharPointer_UTF8 ("  \xc2\xb7  emitida em ")) << info.issued;
-                s << juce::String (juce::CharPointer_UTF8 ("  \xc2\xb7  ")) << (info.isPerpetual() ? juce::String (juce::CharPointer_UTF8 ("perp\xc3\xa9tua"))
-                                                                                                   : juce::String (juce::CharPointer_UTF8 ("v\xc3\xa1lida at\xc3\xa9 ")) + info.expires);
+                s << juce::newLine << tl::tr ("serial ") << info.serial;
+                if (info.issued.isNotEmpty())  s << tl::tr (("  \xc2\xb7  emitida em ")) << info.issued;
+                s << utf8 ("  \xc2\xb7  ") << (info.isPerpetual() ? tl::tr (("perp\xc3\xa9tua"))
+                                                                                                   : tl::tr (("v\xc3\xa1lida at\xc3\xa9 ")) + info.expires);
                 setStatus (s, false);
             }
             else
@@ -157,10 +158,10 @@ namespace tl
     private:
         juce::Label title, idLabel, keyLabel, status;
         juce::TextEditor machineId, keyEditor;
-        juce::TextButton copyButton { "Copiar" }, pasteButton { "Colar" },
-                         activateButton { "Ativar" },
-                         removeButton { juce::String (juce::CharPointer_UTF8 ("Remover licen\xc3\xa7" "a")) },
-                         closeButton { "Fechar" };
+        juce::TextButton copyButton { tl::tr ("Copiar") }, pasteButton { tl::tr ("Colar") },
+                         activateButton { tl::tr ("Ativar") },
+                         removeButton { tl::tr (("Remover licen\xc3\xa7" "a")) },
+                         closeButton { tl::tr ("Fechar") };
         bool licensed = false;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LicensePanel)
