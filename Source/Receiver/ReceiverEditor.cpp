@@ -2,6 +2,15 @@
 #include "Common/Trace.h"
 #include "Common/Log.h"
 #include "Common/Idioma.h"
+#include "Common/Adaptadores.h"
+#include "Common/EnvioDeLog.h"
+#include "Common/Atualizacao.h"
+
+/*  O ReceiverTest compila este mesmo arquivo como aplicativo, e ali o JUCE
+    nao define a versao do plugin. Sem isto o teste nem compila.          */
+#ifndef JucePlugin_VersionString
+ #define JucePlugin_VersionString "0.0"
+#endif
 
 namespace
 {
@@ -14,6 +23,32 @@ namespace
         portugues, entao o codigo continua legivel e um texto sem
         traducao aparece em portugues em vez de virar chave crua.  */
     juce::String tr (const char* s) { return tl::tr (s); }
+
+    /*  Como a linha da rede aparece na lista do QR.
+
+        So o numero nao serve: numa mesa moderna o Wi-Fi da casa, o switch do
+        palco e a rede de audio sao todos "192.168.alguma coisa". Quando o
+        sistema sabe dizer o nome da placa ("Wi-Fi", "Ethernet"), e esse nome
+        que vai para a tela. Quando a faixa do IP indica que o celular nao vai
+        alcancar aquela rede, o aviso vale mais que o nome, e ele e que fica. */
+    juce::String descreverRede (const juce::String& ip)
+    {
+        if (! tl::HttpServer::ehRedeLocal (ip))
+            return tl::HttpServer::tipoDaRede (ip);
+
+        const auto placa = tl::Adaptadores::doEndereco (ip);
+
+        if (placa.nome.isEmpty())
+            return tl::HttpServer::tipoDaRede (ip);
+
+        const auto tipo = tl::Adaptadores::rotuloDoTipo (placa.tipo);
+
+        // No macOS a placa ja se chama "Wi-Fi"; repetir ficaria "Wi-Fi (Wi-Fi)".
+        if (tipo.isEmpty() || placa.nome.containsIgnoreCase (tipo))
+            return placa.nome;
+
+        return placa.nome + " (" + tipo + ")";
+    }
 
     constexpr int kHeaderH = 44;
     constexpr int kLogoH   = 30;
@@ -204,6 +239,39 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     if (processor.getInitError().isNotEmpty())
         statusLabel.setText (tl::tr ("Falha na inicializa\xc3\xa7\xc3\xa3o: ") + processor.getInitError(), juce::dontSendNotification);
 
+    /*  Aviso de versao nova. Os dois botoes nascem escondidos: so aparecem
+        se o site responder que existe uma, e nunca atrapalham quem ja esta
+        atualizado.                                                        */
+    for (auto* b : { &btBaixar, &btIgnorar })
+    {
+        b->setVisible (false);
+        addChildComponent (b);
+    }
+
+    btBaixar.onClick = [this]
+    {
+        TL_LOGI ("update", "usuario foi baixar a " + versaoNova);
+        juce::URL (urlDaVersaoNova).launchInDefaultBrowser();
+    };
+
+    btIgnorar.onClick = [this]
+    {
+        processor.hub->ignorarUpdate (versaoNova, tl::Atualizacao::hoje());
+        btBaixar.setVisible (false);
+        btIgnorar.setVisible (false);
+        resized();
+    };
+
+    {
+        juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> seguro (this);
+        tl::Atualizacao::consultar (JucePlugin_VersionString,
+                                    [seguro] (tl::Atualizacao::Resultado r)
+                                    {
+                                        if (seguro != nullptr)
+                                            seguro->mostrarAvisoDeUpdate (r.versao, r.url);
+                                    });
+    }
+
     startTimerHz (15);
     TL_TRACE ("--- editor: pronto ---");
 }
@@ -289,6 +357,15 @@ void TranscriberLiveAudioProcessorEditor::resized()
     auto logoArea = top.removeFromRight (tl::LogoBadge::widthForHeight (kLogoH));
     logo.setBounds (logoArea.withSizeKeepingCentre (logoArea.getWidth(), kLogoH));
     top.removeFromRight (12);
+
+    if (btIgnorar.isVisible())
+    {
+        btIgnorar.setBounds (top.removeFromRight (62).reduced (0, 2));
+        top.removeFromRight (6);
+        btBaixar .setBounds (top.removeFromRight (62).reduced (0, 2));
+        top.removeFromRight (10);
+    }
+
     statusLabel.setBounds (top);
 
     auto bottom = r.removeFromBottom (kFooterH).reduced (12, 6);
@@ -381,6 +458,36 @@ void TranscriberLiveAudioProcessorEditor::refreshLicenseUi()
 }
 
 //==============================================================================
+/*  Versao nova no site.
+
+    Fica na barra preta de cima, que e para onde o tecnico ja olha quando
+    alguma coisa esta diferente. Dois botoes, nada de janela no meio da tela:
+    abrir um modal na abertura do host seria a maneira mais rapida de o
+    plugin virar "aquele que incomoda".                                    */
+void TranscriberLiveAudioProcessorEditor::mostrarAvisoDeUpdate (const juce::String& versao,
+                                                                const juce::String& url)
+{
+    if (versao.isEmpty())
+        return;
+
+    auto& hub = *processor.hub;
+
+    // Adiou hoje: respeita o dia. Amanha o aviso volta.
+    if (hub.getUpdateIgnorado() == versao && hub.getUpdateIgnoradoEm() == tl::Atualizacao::hoje())
+        return;
+
+    versaoNova      = versao;
+    urlDaVersaoNova = url;
+
+    btBaixar .setButtonText (tr ("Baixar"));
+    btIgnorar.setButtonText (tr ("Ignorar"));
+    btBaixar .setVisible (true);
+    btIgnorar.setVisible (true);
+
+    resized();
+}
+
+//==============================================================================
 void TranscriberLiveAudioProcessorEditor::timerCallback()
 {
     auto& eng = processor.engine;
@@ -390,7 +497,7 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
 
     if (! lastLicensed)
     {
-        if (statusLabel.getText().isEmpty())
+        if (statusLabel.getText().isEmpty() && ! btBaixar.isVisible())
             statusLabel.setText (tr ("Sem licen\xc3\xa7" "a \xe2\x80\x94 o \xc3\xa1udio passa intacto, mas nada \xc3\xa9 transcrito."), juce::dontSendNotification);
         return;
     }
@@ -424,6 +531,12 @@ void TranscriberLiveAudioProcessorEditor::timerCallback()
     if (const auto troca = processor.getTrocaAutomatica(); troca.isNotEmpty())
         s = tr ("Autom\xc3\xa1tico: ") + troca
           + tr (" \xe2\x80\x94 esta m\xc3\xa1quina n\xc3\xa3o acompanhava o tempo real.")
+          + (s.isEmpty() ? juce::String() : juce::String ("   |   ") + s);
+
+    /*  O aviso de versao nova vem na frente do resto: se a maquina esta
+        atrasando, pode ser exatamente a correcao que ja esta publicada.  */
+    if (btBaixar.isVisible())
+        s = tr ("Vers\xc3\xa3o ") + versaoNova + tr (" dispon\xc3\xadvel.")
           + (s.isEmpty() ? juce::String() : juce::String ("   |   ") + s);
 
     if (statusLabel.getText() != s) statusLabel.setText (s, juce::dontSendNotification);
@@ -474,11 +587,14 @@ void TranscriberLiveAudioProcessorEditor::applyIdentityFromUi()
 //==============================================================================
 /*  Botao "Log".
 
-    O log so vale alguma coisa se o cliente conseguir mandar para nos. Pedir
-    "abra a pasta Application Support, entre em logs, ache o arquivo mais novo"
-    por telefone, no meio da passagem de som, nao funciona. Entao um clique faz
-    as duas coisas: copia o diagnostico para a area de transferencia (basta ele
-    colar no WhatsApp) e abre a pasta, para quem preferir mandar o arquivo.  */
+    Antes isto copiava o diagnostico e abria a pasta. Nao funcionava: a pasta e
+    oculta no Windows, o cliente esta no meio da passagem de som, e o arquivo
+    quase nunca chegava ate nos. Agora o mesmo clique manda os logs direto para
+    o site, identificados pela licenca -- nome e e-mail de quem comprou.
+
+    O cliente ve antes, por escrito, exatamente o que vai subir. Nada sai da
+    maquina dele sem ele ler essa lista e clicar em Enviar. Quem preferir o
+    caminho antigo ainda tem o botao de abrir a pasta.                       */
 void TranscriberLiveAudioProcessorEditor::showLog()
 {
     auto& log = tl::Log::get();
@@ -492,16 +608,90 @@ void TranscriberLiveAudioProcessorEditor::showLog()
         return;
     }
 
-    juce::SystemClipboard::copyTextToClipboard (log.diagnostico());
-    log.getFolder().revealToUser();
+    const auto pacote = tl::EnvioDeLog::montar (processor.getLicenseInfo(),
+                                                juce::PluginHostType().getHostDescription());
 
-    TL_LOGI ("ui", "diagnostico copiado pelo usuario");
+    if (pacote.nomesDeArquivo.isEmpty())
+    {
+        juce::NativeMessageBox::showMessageBoxAsync (
+            juce::MessageBoxIconType::InfoIcon, "Log",
+            tr ("Ainda n\xc3\xa3o h\xc3\xa1 nada gravado para enviar."), this);
+        return;
+    }
 
-    juce::NativeMessageBox::showMessageBoxAsync (
-        juce::MessageBoxIconType::InfoIcon, "Log",
-        tr ("Diagn\xc3\xb3stico copiado \xe2\x80\x94 \xc3\xa9 s\xc3\xb3 colar no WhatsApp ou no e-mail do suporte.\n\n"
-              "A pasta com os arquivos completos foi aberta:\n")
-            + log.getFolder().getFullPathName(), this);
+    juce::String resumo;
+    resumo << tr ("Isto \xc3\xa9 o que vai para o suporte:") << "\n\n"
+           << tr ("Nome: ")  << (pacote.nome.isNotEmpty()  ? pacote.nome  : tr ("(sem licen\xc3\xa7" "a instalada)")) << "\n"
+           << tr ("E-mail: ")<< (pacote.email.isNotEmpty() ? pacote.email : tr ("(sem licen\xc3\xa7" "a instalada)")) << "\n"
+           << tr ("M\xc3\xa1quina: ") << pacote.maquina << "\n"
+           << tr ("Vers\xc3\xa3o: ") << pacote.versao << "  |  " << pacote.so << "\n"
+           << tr ("Programa: ") << pacote.host << "\n"
+           << tr ("Arquivos: ") << pacote.nomesDeArquivo.joinIntoString (", ")
+           << "  (" << juce::File::descriptionOfSizeInBytes (pacote.bytes) << ")\n\n"
+           << tr ("Os logs guardam o que a ferramenta fez: hor\xc3\xa1rios, tempos de "
+                  "transcri\xc3\xa7\xc3\xa3o e erros. N\xc3\xa3o vai \xc3\xa1udio nem o que foi falado.");
+
+    auto* janela = new juce::AlertWindow (tr ("Enviar log para o suporte"),
+                                          resumo, juce::MessageBoxIconType::QuestionIcon, this);
+
+    janela->addTextEditor ("recado", {}, tr ("O que aconteceu? (opcional)"));
+    janela->addButton (tr ("Enviar"),      1, juce::KeyPress (juce::KeyPress::returnKey));
+    janela->addButton (tr ("Abrir pasta"), 2);
+    janela->addButton (tr ("Cancelar"),    0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    janela->setVisible (true);
+    janela->toFront (true);
+
+    juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> seguro (this);
+
+    janela->enterModalState (true, juce::ModalCallbackFunction::create (
+        [seguro, janela, pacote] (int escolha)
+        {
+            const auto recado = janela->getTextEditorContents ("recado");
+            delete janela;
+
+            if (escolha == 2)
+            {
+                tl::Log::get().getFolder().revealToUser();
+                return;
+            }
+
+            if (escolha != 1)
+                return;
+
+            TL_LOGI ("ui", "enviando log para o suporte");
+
+            /*  Fora da thread da interface: a rede de uma casa de show pode
+                levar 20 s para responder, e o host nao pode congelar junto. */
+            juce::Thread::launch ([seguro, pacote, recado]
+            {
+                const auto erro = tl::EnvioDeLog::enviar (pacote, recado);
+
+                juce::MessageManager::callAsync ([seguro, erro]
+                {
+                    if (seguro == nullptr)
+                        return;
+
+                    if (erro.isEmpty())
+                    {
+                        TL_LOGI ("ui", "log enviado");
+                        juce::NativeMessageBox::showMessageBoxAsync (
+                            juce::MessageBoxIconType::InfoIcon, "Log",
+                            tl::tr ("Log enviado. Obrigado \xe2\x80\x94 j\xc3\xa1 estamos com ele aqui."),
+                            seguro.getComponent());
+                    }
+                    else
+                    {
+                        TL_LOGW ("ui", "falha ao enviar log: " + erro);
+                        juce::NativeMessageBox::showMessageBoxAsync (
+                            juce::MessageBoxIconType::WarningIcon, "Log",
+                            erro + "\n\n"
+                              + tl::tr ("Voc\xc3\xaa ainda pode mandar os arquivos \xc3\xa0 m\xc3\xa3o: use Abrir pasta."),
+                            seguro.getComponent());
+                    }
+                });
+            });
+        }), false);
 }
 
 //==============================================================================
@@ -621,7 +811,7 @@ void TranscriberLiveAudioProcessorEditor::showQr()
         p->redeLabel.setColour (juce::Label::textColourId, tl::col::dim);
 
         for (int i = 0; i < todosIps.size(); ++i)
-            p->redes.addItem (todosIps[i] + "   \xe2\x80\xa2   " + tl::HttpServer::tipoDaRede (todosIps[i]),
+            p->redes.addItem (todosIps[i] + "   \xe2\x80\xa2   " + descreverRede (todosIps[i]),
                               i + 1);
 
         const int atual = juce::jlimit (0, todosIps.size() - 1, enderecoEscolhido);
@@ -635,6 +825,10 @@ void TranscriberLiveAudioProcessorEditor::showQr()
         {
             const auto ip = todosIps[juce::jlimit (0, todosIps.size() - 1, i)];
             juce::String s = tl::tr ("Computador: ") + juce::SystemStats::getComputerName();
+
+            if (const auto placa = tl::Adaptadores::doEndereco (ip); placa.sistema.isNotEmpty())
+                s << "\n" << tl::tr ("Placa: ") << (placa.nome.isNotEmpty() ? placa.nome : placa.sistema);
+
             if (! tl::HttpServer::ehRedeLocal (ip))
                 s << "\n" << tl::tr ("O celular provavelmente nao alcanca esta. Prefira uma rede local.");
             p->redeDetalhe.setText (s, juce::dontSendNotification);

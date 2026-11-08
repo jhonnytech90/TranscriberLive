@@ -124,6 +124,32 @@ namespace tl
             TL_LOGI ("ui", "idioma: " + juce::String ((int) novo));
         }
 
+        //-- aviso de versao nova -----------------------------------------------------
+        /*  Guarda qual versao o usuario mandou ignorar e em que dia. No dia
+            seguinte o aviso volta: ele tem o direito de adiar, nao de nunca
+            mais saber que existe correcao publicada.                        */
+        juce::String getUpdateIgnorado() const
+        {
+            const juce::ScopedLock sl (parceiroLock);
+            return updateIgnorado;
+        }
+
+        juce::String getUpdateIgnoradoEm() const
+        {
+            const juce::ScopedLock sl (parceiroLock);
+            return updateIgnoradoEm;
+        }
+
+        void ignorarUpdate (const juce::String& versao, const juce::String& dia)
+        {
+            {
+                const juce::ScopedLock sl (parceiroLock);
+                updateIgnorado   = versao;
+                updateIgnoradoEm = dia;
+            }
+            saveSettings();
+        }
+
         /** true quando a parceira respondeu na ultima tentativa. */
         bool isParceiroOnline() const noexcept { return parceiroOnline.load(); }
 
@@ -355,7 +381,9 @@ namespace tl
                 idiomaEscolhido = (Idioma) juce::jlimit (0, 2,
                                       xml->getIntAttribute ("idioma", 0));
                 { const juce::ScopedLock sl (parceiroLock);
-                  parceiro = xml->getStringAttribute ("parceiro", {}).trim(); }
+                  parceiro         = xml->getStringAttribute ("parceiro", {}).trim();
+                  updateIgnorado   = xml->getStringAttribute ("updateIgnorado", {}).trim();
+                  updateIgnoradoEm = xml->getStringAttribute ("updateIgnoradoEm", {}).trim(); }
             }
 
         }
@@ -367,6 +395,8 @@ namespace tl
             xml.setAttribute ("httpPort", httpPort);
             xml.setAttribute ("idioma", (int) idiomaEscolhido);
             xml.setAttribute ("parceiro", getParceiro());
+            xml.setAttribute ("updateIgnorado", getUpdateIgnorado());
+            xml.setAttribute ("updateIgnoradoEm", getUpdateIgnoradoEm());
             getDataDir().createDirectory();
             xml.writeTo (getDataDir().getChildFile ("settings.xml"));
         }
@@ -377,6 +407,7 @@ namespace tl
         std::atomic<bool> mirroring { false };
         std::atomic<bool> encerrando { false };
         Idioma idiomaEscolhido = Idioma::automatico;
+        juce::String updateIgnorado, updateIgnoradoEm;
         mutable juce::CriticalSection parceiroLock;
         juce::String parceiro;
         std::atomic<bool> parceiroOnline { false };

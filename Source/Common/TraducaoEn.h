@@ -6,7 +6,7 @@
     Edite Ferramentas/idioma/catalogo.py e gere de novo, senao a proxima
     geracao apaga a correcao feita aqui.
 
-    99 textos.
+    127 textos.
 */
 namespace tl
 {
@@ -42,7 +42,6 @@ namespace tl
             "\"aliviei o processamento\" = \"eased off the processing\"\n"
             "\"liguei o modo econ\xc3\xb4mico\" = \"turned on economy mode\"\n"
             "\"O log est\xc3\xa1 desligado (existe um arquivo \\\"sem-log\\\" na pasta de dados, ou a pasta n\xc3\xa3o tem permiss\xc3\xa3o de escrita).\" = \"Logging is off (there is a \\\"sem-log\\\" file in the data folder, or the folder isn't writable).\"\n"
-            "\"Diagn\xc3\xb3stico copiado \xe2\x80\x94 \xc3\xa9 s\xc3\xb3 colar no WhatsApp ou no e-mail do suporte.\\n\\nA pasta com os arquivos completos foi aberta:\\n\" = \"Diagnostics copied \xe2\x80\x94 just paste it into WhatsApp or an email to support.\\n\\nThe folder with the full files has been opened:\\n\"\n"
             "\"Copiar endere\xc3\xa7o\" = \"Copy address\"\n"
             "\"Sem rede\" = \"No network\"\n"
             "\"Esta m\xc3\xa1quina n\xc3\xa3o tem endere\xc3\xa7o de rede local. Conecte no mesmo Wi-Fi do celular.\" = \"This machine has no local network address. Connect it to the same Wi-Fi as the phone.\"\n"
@@ -115,6 +114,35 @@ namespace tl
             "\"O celular provavelmente nao alcanca esta. Prefira uma rede local.\" = \"The phone probably can't reach this one. Prefer a local network.\"\n"
             "\"Aponte a c\xc3\xa2mera do celular. Quem abrir a p\xc3\xa1gina, pela c\xc3\xa2mera ou digitando o endere\xc3\xa7o, j\xc3\xa1 pode escrever.\" = \"Point the phone's camera. Anyone who opens the page, by camera or by typing the address, can write.\"\n"
             "\"Display em outra m\xc3\xa1quina: o QR abre a p\xc3\xa1gina de l\xc3\xa1.\" = \"Display on another machine: the QR opens that machine's page.\"\n"
+            "\"Wi-Fi\" = \"Wi-Fi\"\n"
+            "\"Cabeada\" = \"Wired\"\n"
+            "\"Ponte\" = \"Bridge\"\n"
+            "\"Virtual\" = \"Virtual\"\n"
+            "\"Placa: \" = \"Adapter: \"\n"
+            "\"Enviar log para o suporte\" = \"Send log to support\"\n"
+            "\"Isto \xc3\xa9 o que vai para o suporte:\" = \"This is what goes to support:\"\n"
+            "\"Nome: \" = \"Name: \"\n"
+            "\"E-mail: \" = \"E-mail: \"\n"
+            "\"M\xc3\xa1quina: \" = \"Machine: \"\n"
+            "\"Vers\xc3\xa3o: \" = \"Version: \"\n"
+            "\"Programa: \" = \"Host: \"\n"
+            "\"Arquivos: \" = \"Files: \"\n"
+            "\"(sem licen\xc3\xa7" "a instalada)\" = \"(no licence installed)\"\n"
+            "\"Os logs guardam o que a ferramenta fez: hor\xc3\xa1rios, tempos de transcri\xc3\xa7\xc3\xa3o e erros. N\xc3\xa3o vai \xc3\xa1udio nem o que foi falado.\" = \"The logs record what the tool did: timestamps, transcription times and errors. No audio and nothing that was said.\"\n"
+            "\"O que aconteceu? (opcional)\" = \"What happened? (optional)\"\n"
+            "\"Enviar\" = \"Send\"\n"
+            "\"Abrir pasta\" = \"Open folder\"\n"
+            "\"Cancelar\" = \"Cancel\"\n"
+            "\"Ainda n\xc3\xa3o h\xc3\xa1 nada gravado para enviar.\" = \"There is nothing recorded to send yet.\"\n"
+            "\"Log enviado. Obrigado \xe2\x80\x94 j\xc3\xa1 estamos com ele aqui.\" = \"Log sent. Thank you \xe2\x80\x94 we have it here.\"\n"
+            "\"Voc\xc3\xaa ainda pode mandar os arquivos \xc3\xa0 m\xc3\xa3o: use Abrir pasta.\" = \"You can still send the files by hand: use Open folder.\"\n"
+            "\"N\xc3\xa3o encontrei nenhum log para enviar.\" = \"I found no log to send.\"\n"
+            "\"N\xc3\xa3o consegui falar com o site. Confira a internet desta m\xc3\xa1quina.\" = \"I could not reach the site. Check this machine's internet connection.\"\n"
+            "\"O site recusou o envio.\" = \"The site refused the upload.\"\n"
+            "\"Vers\xc3\xa3o \" = \"Version \"\n"
+            "\" dispon\xc3\xadvel.\" = \" available.\"\n"
+            "\"Baixar\" = \"Download\"\n"
+            "\"Ignorar\" = \"Dismiss\"\n"
         );
     }
 }

@@ -49,6 +49,10 @@ private:
     juce::String urlDoDisplay() const;
     void showLog();
     void refreshLicenseUi();
+
+    /*  Mostra na barra preta que ha versao nova, com Baixar e Ignorar.
+        Chamada so quando o site responde que existe uma.                */
+    void mostrarAvisoDeUpdate (const juce::String& versao, const juce::String& url);
     void setControlsVisible (bool);
 
     /*  Reescreve os textos fixos da janela na lingua atual.
@@ -67,6 +71,8 @@ private:
     juce::Label        nameLabel, importanceLabel, modoLabel, gateLabel, vadLabel, holdLabel;
     juce::TextEditor   nameEditor;
     juce::TextButton   colourButton, licenseButton, logButton { "Log" }, qrButton { "QR" };
+    juce::TextButton   btBaixar, btIgnorar;   // so aparecem com versao nova no site
+    juce::String       versaoNova, urlDaVersaoNova;
     juce::ComboBox     importanceBox, modoBox, idiomaBox;
     juce::ToggleButton flashButton { "Flash" }, partialsButton;
     LevelMeter         meter;

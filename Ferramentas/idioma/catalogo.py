@@ -44,8 +44,6 @@ EN = {
 # --- botão Log
 "O log está desligado (existe um arquivo \"sem-log\" na pasta de dados, ou a pasta não tem permissão de escrita).":
   "Logging is off (there is a \"sem-log\" file in the data folder, or the folder isn't writable).",
-"Diagnóstico copiado — é só colar no WhatsApp ou no e-mail do suporte.\n\nA pasta com os arquivos completos foi aberta:\n":
-  "Diagnostics copied — just paste it into WhatsApp or an email to support.\n\nThe folder with the full files has been opened:\n",
 
 # --- painel do QR
 "Copiar endereço": "Copy address",
@@ -148,4 +146,42 @@ EN.update({
   "Point the phone's camera. Anyone who opens the page, by camera or by typing the address, can write.",
 "Display em outra máquina: o QR abre a página de lá.":
   "Display on another machine: the QR opens that machine's page.",
+
+# -- placa de rede (o usuario precisa saber qual IP e o cabo e qual e o Wi-Fi)
+"Wi-Fi": "Wi-Fi",
+"Cabeada": "Wired",
+"Ponte": "Bridge",
+"Virtual": "Virtual",
+"Placa: ": "Adapter: ",
+
+# -- envio de log para o suporte
+"Enviar log para o suporte": "Send log to support",
+"Isto é o que vai para o suporte:": "This is what goes to support:",
+"Nome: ": "Name: ",
+"E-mail: ": "E-mail: ",
+"Máquina: ": "Machine: ",
+"Versão: ": "Version: ",
+"Programa: ": "Host: ",
+"Arquivos: ": "Files: ",
+"(sem licença instalada)": "(no licence installed)",
+"Os logs guardam o que a ferramenta fez: horários, tempos de transcrição e erros. Não vai áudio nem o que foi falado.":
+  "The logs record what the tool did: timestamps, transcription times and errors. No audio and nothing that was said.",
+"O que aconteceu? (opcional)": "What happened? (optional)",
+"Enviar": "Send",
+"Abrir pasta": "Open folder",
+"Cancelar": "Cancel",
+"Ainda não há nada gravado para enviar.": "There is nothing recorded to send yet.",
+"Log enviado. Obrigado — já estamos com ele aqui.": "Log sent. Thank you — we have it here.",
+"Você ainda pode mandar os arquivos à mão: use Abrir pasta.":
+  "You can still send the files by hand: use Open folder.",
+"Não encontrei nenhum log para enviar.": "I found no log to send.",
+"Não consegui falar com o site. Confira a internet desta máquina.":
+  "I could not reach the site. Check this machine's internet connection.",
+"O site recusou o envio.": "The site refused the upload.",
+
+# -- aviso de versao nova na barra de status
+"Versão ": "Version ",
+" disponível.": " available.",
+"Baixar": "Download",
+"Ignorar": "Dismiss",
 })

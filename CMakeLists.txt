@@ -217,7 +217,18 @@ set(TL_COMMON_DEFS
 
 # recursos compartilhados (página web do celular) + hub
 juce_add_binary_data(TranscriberDisplayData SOURCES Resources/display.html Resources/logoheader.png Resources/vocabulario-pt-br.txt)
-set(TL_COMMON_SOURCES Source/Common/Hub.cpp Source/Common/License.cpp Source/Common/Log.cpp Source/Common/Vocabulario.cpp Source/Common/QrCode.cpp)
+set(TL_COMMON_SOURCES Source/Common/Hub.cpp Source/Common/License.cpp Source/Common/Log.cpp Source/Common/Vocabulario.cpp Source/Common/QrCode.cpp Source/Common/Adaptadores.cpp)
+
+# Nome real da placa de rede (Wi-Fi x cabeada): quem sabe isso e o sistema.
+# macOS: SystemConfiguration, o mesmo que preenche Ajustes de Rede.
+# Windows: GetAdaptersAddresses, que mora na iphlpapi.
+if(APPLE)
+    set(TL_REDE_LIBS "-framework SystemConfiguration")
+elseif(WIN32)
+    set(TL_REDE_LIBS iphlpapi ws2_32)
+else()
+    set(TL_REDE_LIBS "")
+endif()
 
 # ---- Receiver ----
 juce_add_plugin(TranscriberLive
@@ -248,6 +259,7 @@ target_include_directories(TranscriberLive PRIVATE Source)
 target_compile_definitions(TranscriberLive PUBLIC ${TL_COMMON_DEFS})
 target_link_libraries(TranscriberLive PRIVATE
     TranscriberDisplayData
+    ${TL_REDE_LIBS}
     juce::juce_audio_utils
     juce::juce_cryptography
     juce::juce_dsp
@@ -285,6 +297,7 @@ target_include_directories(TranscriberLiveDisplay PRIVATE Source)
 target_compile_definitions(TranscriberLiveDisplay PUBLIC ${TL_COMMON_DEFS})
 target_link_libraries(TranscriberLiveDisplay PRIVATE
     TranscriberDisplayData
+    ${TL_REDE_LIBS}
     juce::juce_audio_utils
     juce::juce_cryptography
     PUBLIC
@@ -310,6 +323,7 @@ target_include_directories(TranscriberLiveDisplayApp PRIVATE Source)
 target_compile_definitions(TranscriberLiveDisplayApp PRIVATE ${TL_COMMON_DEFS} TRANSCRIBER_DISPLAY_APP=1 JUCE_APPLICATION_NAME_STRING="Transcriber Live Display" JUCE_APPLICATION_VERSION_STRING="${TL_VERSAO}")
 target_link_libraries(TranscriberLiveDisplayApp PRIVATE
     TranscriberDisplayData
+    ${TL_REDE_LIBS}
     juce::juce_audio_utils
     juce::juce_cryptography
     juce::juce_gui_extra
@@ -349,6 +363,6 @@ if(TRANSCRIBER_BUILD_TESTS)
         Source/Common/TranscriptionEngine.cpp ${TL_COMMON_SOURCES})
     target_include_directories(ReceiverTest PRIVATE Source)
     target_compile_definitions(ReceiverTest PRIVATE ${TL_COMMON_DEFS} JucePlugin_Name="Transcriber Live Receiver")
-    target_link_libraries(ReceiverTest PRIVATE TranscriberDisplayData juce::juce_cryptography juce::juce_gui_extra juce::juce_audio_formats juce::juce_audio_utils juce::juce_dsp juce::juce_audio_processors whisper
+    target_link_libraries(ReceiverTest PRIVATE TranscriberDisplayData ${TL_REDE_LIBS} juce::juce_cryptography juce::juce_gui_extra juce::juce_audio_formats juce::juce_audio_utils juce::juce_dsp juce::juce_audio_processors whisper
         PUBLIC juce::juce_recommended_config_flags)
 endif()
