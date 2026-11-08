@@ -11,7 +11,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          # macos-14 foi aposentado pelo GitHub em 02/11/2026: o job morria em
+          # 1 segundo, sem pegar runner e sem mensagem de erro -- parecia
+          # problema nosso e nao era. Label explicito, nao "latest", pelo
+          # mesmo motivo do windows-2022: build reproduzivel.
+          - os: macos-15
             name: macOS
             targets: TranscriberLive_VST3 TranscriberLive_AU TranscriberLiveDisplay_VST3 TranscriberLiveDisplay_AU TranscriberLiveDisplayApp
             artefacts: build/TranscriberLive_artefacts/Release
@@ -130,7 +134,7 @@ jobs:
       # fator de ~10x na maquina do cliente.
       # -----------------------------------------------------------------------
       - name: Compila arm64 e x86_64 em separado (macOS)
-        if: matrix.os == 'macos-14'
+        if: matrix.os == 'macos-15'
         run: |
           # pipefail e obrigatorio aqui: sem ele, o "| tee" mascara a falha do
           # cmake e o build segue em frente com uma configuracao quebrada.
@@ -156,7 +160,7 @@ jobs:
           done
 
       - name: Junta as fatias num binario universal (macOS)
-        if: matrix.os == 'macos-14'
+        if: matrix.os == 'macos-15'
         run: |
           set -e
           rm -rf build && mkdir -p build
@@ -314,7 +318,7 @@ jobs:
   # ---------------------------------------------------------------------------
   installer-macos:
     needs: build
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: write
     steps:
