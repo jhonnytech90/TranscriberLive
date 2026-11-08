@@ -124,6 +124,27 @@ namespace tl
             TL_LOGI ("ui", "idioma: " + juce::String ((int) novo));
         }
 
+        //-- nome de quem escreve pelo Display ----------------------------------------
+        /*  O tecnico de monitor digita na janela do Display, e a mensagem
+            precisa chegar assinada: "Monitor", "P.A.", o nome dele. Fica
+            guardado para ele nao redigitar a cada show.                   */
+        juce::String getNomeDisplay() const
+        {
+            const juce::ScopedLock sl (parceiroLock);
+            return nomeDisplay;
+        }
+
+        void setNomeDisplay (const juce::String& n)
+        {
+            const auto limpo = n.trim().substring (0, 24);
+            {
+                const juce::ScopedLock sl (parceiroLock);
+                if (limpo == nomeDisplay) return;
+                nomeDisplay = limpo;
+            }
+            saveSettings();
+        }
+
         //-- aviso de versao nova -----------------------------------------------------
         /*  Guarda qual versao o usuario mandou ignorar e em que dia. No dia
             seguinte o aviso volta: ele tem o direito de adiar, nao de nunca
@@ -383,7 +404,8 @@ namespace tl
                 { const juce::ScopedLock sl (parceiroLock);
                   parceiro         = xml->getStringAttribute ("parceiro", {}).trim();
                   updateIgnorado   = xml->getStringAttribute ("updateIgnorado", {}).trim();
-                  updateIgnoradoEm = xml->getStringAttribute ("updateIgnoradoEm", {}).trim(); }
+                  updateIgnoradoEm = xml->getStringAttribute ("updateIgnoradoEm", {}).trim();
+                  nomeDisplay      = xml->getStringAttribute ("nomeDisplay", {}).trim(); }
             }
 
         }
@@ -397,6 +419,7 @@ namespace tl
             xml.setAttribute ("parceiro", getParceiro());
             xml.setAttribute ("updateIgnorado", getUpdateIgnorado());
             xml.setAttribute ("updateIgnoradoEm", getUpdateIgnoradoEm());
+            xml.setAttribute ("nomeDisplay", getNomeDisplay());
             getDataDir().createDirectory();
             xml.writeTo (getDataDir().getChildFile ("settings.xml"));
         }
@@ -407,7 +430,7 @@ namespace tl
         std::atomic<bool> mirroring { false };
         std::atomic<bool> encerrando { false };
         Idioma idiomaEscolhido = Idioma::automatico;
-        juce::String updateIgnorado, updateIgnoradoEm;
+        juce::String updateIgnorado, updateIgnoradoEm, nomeDisplay;
         mutable juce::CriticalSection parceiroLock;
         juce::String parceiro;
         std::atomic<bool> parceiroOnline { false };

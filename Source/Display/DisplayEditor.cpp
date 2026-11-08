@@ -223,6 +223,26 @@ DisplayAudioProcessorEditor::DisplayAudioProcessorEditor (DisplayAudioProcessor&
     chatViewport.setScrollBarsShown (true, false);
     addAndMakeVisible (chatViewport);
 
+    /*  Barra de escrever, no rodape.
+
+        O tecnico de monitor esta com as duas maos na mesa e um Display aberto
+        na tela. Obrigar ele a pegar o celular para responder uma palavra ao
+        cantor e o tipo de atrito que faz a ferramenta ser abandonada no meio
+        do show. Entao o proprio Display escreve.                          */
+    nomeEditor.setFont (juce::FontOptions (14.0f));
+    nomeEditor.setText (processor.hub->getNomeDisplay(), juce::dontSendNotification);
+    nomeEditor.onFocusLost  = [this] { processor.hub->setNomeDisplay (nomeEditor.getText()); };
+    nomeEditor.onReturnKey  = [this] { processor.hub->setNomeDisplay (nomeEditor.getText()); };
+
+    mensagemEditor.setFont (juce::FontOptions (15.0f));
+    mensagemEditor.onReturnKey = [this] { enviarMensagem(); };
+
+    enviarButton.onClick = [this] { enviarMensagem(); };
+
+    for (auto* c : std::initializer_list<juce::Component*> { &nomeLabel, &nomeEditor,
+                                                             &mensagemEditor, &enviarButton })
+        addAndMakeVisible (c);
+
     addChildComponent (flash);
 
     startTimerHz (30);
@@ -239,7 +259,87 @@ void DisplayAudioProcessorEditor::aplicarTextos()
     flashButton   .setButtonText (tl::tr ("Flash"));
     clearButton   .setButtonText (tl::tr ("Limpar tudo"));
     settingsButton.setButtonText (tl::tr ("Rede..."));
+    nomeLabel     .setText (tl::tr ("Nome"), juce::dontSendNotification);
+    nomeLabel     .setFont (juce::FontOptions (12.0f));
+    nomeLabel     .setColour (juce::Label::textColourId, kDim);
+    nomeEditor    .setTextToShowWhenEmpty (tl::tr ("Monitor"), kDim);
+    mensagemEditor.setTextToShowWhenEmpty (tl::tr ("Escreva aqui e tecle Enter"), kDim);
+    enviarButton  .setButtonText (tl::tr ("Enviar"));
     refresh (false);          // os baloes e a lista tambem tem texto nosso
+}
+
+/*  Escrever a partir do proprio Display.
+
+    Nao inventa caminho novo: monta o mesmo JSON que o celular manda e bate na
+    mesma rota /say. Quem recebe e sempre a maquina que manda na conversa --
+    a parceira, quando este Display espelha outra maquina, senao o servidor
+    desta aqui. Escrever direto na memoria local pareceria funcionar e seria
+    pior: a mensagem apareceria so nesta tela, e ninguem mais veria.
+
+    Vai em outra thread, porque a rede pode demorar e a janela do Display fica
+    aberta no meio do show.                                                */
+void DisplayAudioProcessorEditor::enviarMensagem()
+{
+    const auto texto = mensagemEditor.getText().trim();
+    if (texto.isEmpty())
+        return;
+
+    auto& hub = *processor.hub;
+
+    auto nome = nomeEditor.getText().trim();
+    if (nome.isEmpty())
+        nome = tl::tr ("Monitor");
+    hub.setNomeDisplay (nome);
+
+    const auto parceiro = hub.getParceiro();
+    const auto alvo = parceiro.isNotEmpty() ? hub.comPorta (parceiro)
+                                            : "127.0.0.1:" + juce::String (hub.getHttpPort());
+
+    // Id estavel por maquina: mantem esta pessoa como UM participante na
+    // barra lateral, em vez de uma linha nova a cada frase.
+    const auto id = ("disp-" + juce::SystemStats::getComputerName())
+                        .retainCharacters ("abcdefghijklmnopqrstuvwxyz"
+                                           "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-");
+
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("id",    id);
+    o->setProperty ("name",  nome);
+    o->setProperty ("color", "00b8d4");
+    o->setProperty ("imp",   1);
+    o->setProperty ("text",  texto);
+
+    const auto corpo = juce::JSON::toString (juce::var (o), true);
+    mensagemEditor.clear();
+
+    juce::Component::SafePointer<DisplayAudioProcessorEditor> seguro (this);
+
+    juce::Thread::launch ([alvo, corpo, texto, seguro]
+    {
+        juce::URL url ("http://" + alvo + "/say");
+        url = url.withPOSTData (corpo);
+
+        const auto opcoes = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inPostData)
+                                .withConnectionTimeoutMs (4000)
+                                .withExtraHeaders ("Content-Type: application/json")
+                                .withHttpRequestCmd ("POST");
+
+        const bool ok = url.createInputStream (opcoes) != nullptr;
+
+        if (ok)
+            TL_LOGI ("display", "mensagem enviada daqui: " + texto);
+        else
+            TL_LOGW ("display", "nao consegui enviar a mensagem para " + alvo);
+
+        if (! ok)
+            juce::MessageManager::callAsync ([seguro, texto]
+            {
+                if (seguro == nullptr) return;
+                // Devolve o texto: perder o que a pessoa digitou e imperdoavel.
+                seguro->mensagemEditor.setText (texto);
+                seguro->statusLabel.setText (tl::tr ("N\xc3\xa3o consegui enviar. Confira a rede."),
+                                             juce::dontSendNotification);
+            });
+    });
 }
 
 void DisplayAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
@@ -286,6 +386,15 @@ void DisplayAudioProcessorEditor::resized()
     side.removeFromTop (26);
     sideViewport.setBounds (side);
     participants.setSize (sideViewport.getMaximumVisibleWidth(), participants.getPreferredHeight());
+
+    // rodape: quem escreve daqui assina com um nome, como no celular
+    auto rodape = r.removeFromBottom (38).reduced (6, 5);
+    nomeLabel.setBounds (rodape.removeFromLeft (44));
+    nomeEditor.setBounds (rodape.removeFromLeft (110));
+    rodape.removeFromLeft (8);
+    enviarButton.setBounds (rodape.removeFromRight (90));
+    rodape.removeFromRight (8);
+    mensagemEditor.setBounds (rodape);
 
     chatViewport.setBounds (r.reduced (4, 4));
     flash.setBounds (getLocalBounds());

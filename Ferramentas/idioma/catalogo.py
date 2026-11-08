@@ -184,4 +184,9 @@ EN.update({
 " disponível.": " available.",
 "Baixar": "Download",
 "Ignorar": "Dismiss",
+
+# -- barra de escrever do Display
+"Monitor": "Monitor",
+"Escreva aqui e tecle Enter": "Type here and press Enter",
+"Não consegui enviar. Confira a rede.": "Could not send. Check the network.",
 })

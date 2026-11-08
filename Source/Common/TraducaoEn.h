@@ -6,7 +6,7 @@
     Edite Ferramentas/idioma/catalogo.py e gere de novo, senao a proxima
     geracao apaga a correcao feita aqui.
 
-    127 textos.
+    130 textos.
 */
 namespace tl
 {
@@ -143,6 +143,9 @@ namespace tl
             "\" dispon\xc3\xadvel.\" = \" available.\"\n"
             "\"Baixar\" = \"Download\"\n"
             "\"Ignorar\" = \"Dismiss\"\n"
+            "\"Monitor\" = \"Monitor\"\n"
+            "\"Escreva aqui e tecle Enter\" = \"Type here and press Enter\"\n"
+            "\"N\xc3\xa3o consegui enviar. Confira a rede.\" = \"Could not send. Check the network.\"\n"
         );
     }
 }

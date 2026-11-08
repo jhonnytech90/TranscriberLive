@@ -77,6 +77,12 @@ private:
     void refresh (bool force);
     void showSettings();
 
+    /*  Manda uma mensagem digitada aqui dentro, como se tivesse vindo de um
+        celular. Quem recebe e sempre a maquina que manda na conversa: a
+        parceira, se este Display estiver espelhando uma, senao o servidor
+        desta propria maquina.                                             */
+    void enviarMensagem();
+
     /** Reescreve os textos fixos quando o idioma muda com a janela aberta. */
     void aplicarTextos();
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -89,6 +95,10 @@ private:
     juce::ToggleButton flashButton { tl::tr ("Flash") };
     juce::TextButton   clearButton { tl::tr ("Limpar tudo") }, fontDownButton { "A-" }, fontUpButton { "A+" },
                        settingsButton { tl::tr ("Rede...") };
+
+    juce::Label        nomeLabel;
+    juce::TextEditor   nomeEditor, mensagemEditor;
+    juce::TextButton   enviarButton;
 
     juce::Viewport      sideViewport, chatViewport;
     ParticipantList     participants;
