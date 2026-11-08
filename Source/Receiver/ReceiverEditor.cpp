@@ -670,7 +670,7 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     {
         p->titulo.setText (tl::tr ("Endere\xc3\xa7" "o para o celular"), juce::dontSendNotification);
         p->endereco.setText (url, juce::dontSendNotification);
-        p->temQr = p->qr.gerar (url);
+        p->temQr = tl::QrCode::gerar (url, p->qr);   // estatica: texto -> destino
 
         if (! p->temQr)
             p->aviso.setText (tl::tr ((
