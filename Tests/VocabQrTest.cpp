@@ -419,7 +419,7 @@ static void testeIdioma()
         { "Limpar tudo", "Clear all" },
         { "Licen\xc3\xa7" "a", "License" },                 // chave com acento
         { "Sensib. VAD", "VAD sens." },
-        { "Outra rede (%1 de %2)", "Other network (%1 of %2)" },
+        { "Rede virtual (VPN ou m\xc3\xa1quina virtual)", "Virtual network (VPN or virtual machine)" },
     };
 
     for (auto& c : casos)
