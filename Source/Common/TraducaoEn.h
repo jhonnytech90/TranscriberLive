@@ -6,7 +6,7 @@
     Edite Ferramentas/idioma/catalogo.py e gere de novo, senao a proxima
     geracao apaga a correcao feita aqui.
 
-    102 textos.
+    99 textos.
 */
 namespace tl
 {
@@ -44,22 +44,10 @@ namespace tl
             "\"O log est\xc3\xa1 desligado (existe um arquivo \\\"sem-log\\\" na pasta de dados, ou a pasta n\xc3\xa3o tem permiss\xc3\xa3o de escrita).\" = \"Logging is off (there is a \\\"sem-log\\\" file in the data folder, or the folder isn't writable).\"\n"
             "\"Diagn\xc3\xb3stico copiado \xe2\x80\x94 \xc3\xa9 s\xc3\xb3 colar no WhatsApp ou no e-mail do suporte.\\n\\nA pasta com os arquivos completos foi aberta:\\n\" = \"Diagnostics copied \xe2\x80\x94 just paste it into WhatsApp or an email to support.\\n\\nThe folder with the full files has been opened:\\n\"\n"
             "\"Copiar endere\xc3\xa7o\" = \"Copy address\"\n"
-            "\"Celulares podem escrever\" = \"Phones can write\"\n"
-            "\"Sem precisar do QR (vale digitar o endere\xc3\xa7o)\" = \"No QR needed (typing the address works)\"\n"
-            "\"Trocar c\xc3\xb3" "digo\" = \"New code\"\n"
-            "\"Outra rede (%1 de %2)\" = \"Other network (%1 of %2)\"\n"
-            "\"Esta m\xc3\xa1quina tem mais de uma rede. Se o celular n\xc3\xa3o abrir a p\xc3\xa1gina, troque aqui at\xc3\xa9 achar a rede em que ele est\xc3\xa1.\" = \"This machine is on more than one network. If the phone doesn't open the page, switch here until you find the one it's on.\"\n"
-            "\"Para PC, que nao le QR Code. Com isto ligado, quem digitar o endere\xc3\xa7o no navegador tamb\xc3\xa9m escreve \xe2\x80\x94 inclusive quem s\xc3\xb3 descobriu o endere\xc3\xa7o na rede do local.\" = \"For PCs, which can't read a QR code. With this on, anyone who types the address in a browser can write too \xe2\x80\x94 including anyone who merely found the address on the venue's network.\"\n"
-            "\"Desligado, ningu\xc3\xa9m escreve pelo celular, nem quem j\xc3\xa1 leu o QR.\" = \"Off, nobody writes from a phone, not even someone who already scanned the QR.\"\n"
-            "\"Sorteia um c\xc3\xb3" "digo novo: os aparelhos que j\xc3\xa1 entraram param de escrever at\xc3\xa9 lerem o QR de novo. Serve para cortar o acesso de algu\xc3\xa9m sem desligar a fun\xc3\xa7\xc3\xa3o para todos.\" = \"Draws a new code: devices already in stop writing until they scan the QR again. Use it to cut one person's access without turning the feature off for everyone.\"\n"
             "\"Sem rede\" = \"No network\"\n"
             "\"Esta m\xc3\xa1quina n\xc3\xa3o tem endere\xc3\xa7o de rede local. Conecte no mesmo Wi-Fi do celular.\" = \"This machine has no local network address. Connect it to the same Wi-Fi as the phone.\"\n"
             "\"Endere\xc3\xa7o para o celular\" = \"Address for the phone\"\n"
             "\"N\xc3\xa3o consegui gerar o QR para este endere\xc3\xa7o. Digite no navegador.\" = \"I couldn't generate the QR for this address. Type it in the browser.\"\n"
-            "\"Aponte a c\xc3\xa2mera do celular\" = \"Point the phone's camera\"\n"
-            "\"Display em outra m\xc3\xa1quina: aqui o QR abre s\xc3\xb3 para leitura. Para escrever, use o QR do Receiver daquela m\xc3\xa1quina.\" = \"Display on another machine: this QR opens read-only. To write, use the QR from the Receiver on that machine.\"\n"
-            "\"Quem ler o QR pode escrever no tel\xc3\xa3o. Quem s\xc3\xb3 digitar o endere\xc3\xa7o v\xc3\xaa a conversa, mas n\xc3\xa3o escreve.\" = \"Whoever scans the QR can write on the screen. Whoever only types the address sees the conversation but can't write.\"\n"
-            "\"Ainda n\xc3\xa3o peguei o c\xc3\xb3" "digo de escrita do Display. Abra de novo em alguns segundos.\" = \"I haven't picked up the Display's writing code yet. Open this again in a few seconds.\"\n"
             "\"Flash\" = \"Flash\"\n"
             "\"Limpar tudo\" = \"Clear all\"\n"
             "\"Rede...\" = \"Network...\"\n"
@@ -118,6 +106,15 @@ namespace tl
             "\"serial \" = \"serial \"\n"
             "\"Idioma\" = \"Language\"\n"
             "\"ex.: 192.168.0.20 ou 192.168.0.20:47801\" = \"e.g. 192.168.0.20 or 192.168.0.20:47801\"\n"
+            "\"Rede desta m\xc3\xa1quina\" = \"This machine's network\"\n"
+            "\"Rede local\" = \"Local network\"\n"
+            "\"Rede virtual (VPN ou m\xc3\xa1quina virtual)\" = \"Virtual network (VPN or virtual machine)\"\n"
+            "\"Rede do provedor (n\xc3\xa3o e a rede da sala)\" = \"Carrier network (not the room's network)\"\n"
+            "\"Endere\xc3\xa7o p\xc3\xba" "blico (n\xc3\xa3o e a rede da sala)\" = \"Public address (not the room's network)\"\n"
+            "\"Computador: \" = \"Computer: \"\n"
+            "\"O celular provavelmente nao alcanca esta. Prefira uma rede local.\" = \"The phone probably can't reach this one. Prefer a local network.\"\n"
+            "\"Aponte a c\xc3\xa2mera do celular. Quem abrir a p\xc3\xa1gina, pela c\xc3\xa2mera ou digitando o endere\xc3\xa7o, j\xc3\xa1 pode escrever.\" = \"Point the phone's camera. Anyone who opens the page, by camera or by typing the address, can write.\"\n"
+            "\"Display em outra m\xc3\xa1quina: o QR abre a p\xc3\xa1gina de l\xc3\xa1.\" = \"Display on another machine: the QR opens that machine's page.\"\n"
         );
     }
 }

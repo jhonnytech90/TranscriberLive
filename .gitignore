@@ -30,3 +30,7 @@ Instalador/Windows/binarios/
 !registro/
 !registro/licencas-emitidas.csv
 Instalador/recursos-desi/
+
+# cache do Python das ferramentas
+__pycache__/
+*.pyc

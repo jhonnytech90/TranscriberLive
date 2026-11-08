@@ -548,7 +548,7 @@ juce::String TranscriptionEngine::transcribe (const std::vector<float>& audio, b
     // o usa dentro de whisper_full(). Manter a string viva aqui é o que
     // garante que ele não leia memória liberada.
     static const char* const promptPadrao =
-        "Comunicação de palco entre cantor e técnico de som durante o show.";
+        "Comunica\xc3\xa7\xc3\xa3o de palco entre cantor e t\xc3\xa9" "cnico de som durante o show.";
 
     const juce::String promptUtf8 = s.initialPrompt.isNotEmpty() ? s.initialPrompt
                                                                  : juce::String (juce::CharPointer_UTF8 (promptPadrao));

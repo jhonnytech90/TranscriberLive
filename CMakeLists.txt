@@ -198,7 +198,12 @@ else()
     set(TL_LTO juce::juce_recommended_lto_flags)
 endif()
 
-set(TL_COMPANY      "Jhonatan Miikael")
+# O que o host mostra como fabricante. O BUNDLE_BASE nao acompanha de
+# proposito: ele so identifica os bundles, e mexer nele trocaria o caminho
+# de instalacao sem nenhum ganho. A pasta de dados (licenca, settings,
+# modelos) nao vem daqui -- e "TranscriberLive" fixo no Hub --, entao
+# trocar este nome NAO faz ninguem perder licenca.
+set(TL_COMPANY      "TRANSCRIBER LIVE")
 set(TL_BUNDLE_BASE  "com.jhonatanmiikael")
 set(TL_ICON_BIG     "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon_1024.png")
 set(TL_ICON_SMALL   "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon_256.png")

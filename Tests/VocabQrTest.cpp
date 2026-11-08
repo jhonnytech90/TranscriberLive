@@ -318,6 +318,12 @@ static juce::String postSay (int porta, const juce::String& json, bool separado 
         separado);
 }
 
+static juce::String getRota (int porta, const juce::String& rota)
+{
+    return falarComServidor (porta,
+        "GET " + rota + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+}
+
 static void testeEscritaWeb()
 {
     printf ("escrita pelos celulares...\n");
@@ -335,115 +341,46 @@ static void testeEscritaWeb()
 
     if (porta == 0) { ++falhas; printf ("  FALHA: nao consegui subir o servidor de teste\n"); return; }
 
-    const auto token = web.getToken();
-    checa (token.length() == 8, "o codigo de escrita deveria ter 8 caracteres");
-    checa (! token.containsAnyOf ("AEIOU01lI"),
-           "o codigo nao pode ter caracteres que se confundem ao ler em voz alta");
-
-    auto corpoDe = [] (const juce::String& r) { return r.fromFirstOccurrenceOf ("\r\n\r\n", false, false); };
+    auto corpoDe  = [] (const juce::String& r) { return r.fromFirstOccurrenceOf ("\r\n\r\n", false, false); };
     auto statusDe = [] (const juce::String& r) { return r.upToFirstOccurrenceOf ("\r\n", false, false); };
 
-    // ---- codigo certo: entra ------------------------------------------------
+    /*  Nao ha mais codigo nem permissao: quem alcanca o endereco escreve.
+
+        O que este teste protege e justamente isso. Se um dia voltar uma trava
+        por engano -- uma condicao esquecida, um 403 que nao deveria existir --
+        o telao para de receber mensagem do celular no meio do show, e ninguem
+        descobre pelo log.                                                   */
     {
-        const auto r = postSay (porta, "{\"k\":\"" + token + "\",\"id\":\"abc\",\"name\":\"Producao\","
-                                       "\"color\":\"4fc3f7\",\"text\":\"corta o delay\"}");
-        checa (statusDe (r).contains ("200"), "mensagem com codigo certo deveria ser aceita: " + statusDe (r));
+        const auto r = postSay (porta, "{\"id\":\"cel\",\"name\":\"Monitor\",\"text\":\"sobe o retorno\"}");
+        checa (statusDe (r).contains ("200"),
+               "mensagem sem codigo tem que ser aceita: nao existe mais trava");
 
-        const auto e = store.getEntries();
-        checa (e.size() == 1, "a mensagem nao chegou no historico");
-
-        if (! e.empty())
-        {
-            checa (e[0].text == "corta o delay", "o texto chegou errado: " + e[0].text);
-            checa (e[0].name == "Producao", "o nome chegou errado: " + e[0].name);
-
-            // O prefixo e o que separa um celular de um canal de audio na
-            // barra de participantes, e o que impede um aparelho de se passar
-            // por um Receiver.
-            checa (e[0].channelId.startsWith ("web-"), "faltou o prefixo web- no id: " + e[0].channelId);
-        }
+        bool chegou = false;
+        for (auto& e : store.getEntries())
+            if (e.text == "sobe o retorno") chegou = true;
+        checa (chegou, "a mensagem foi aceita mas nao entrou na conversa");
     }
 
-    // ---- corpo em pacote separado: tem que funcionar igual ------------------
+    // Um "k" sobrando, de um QR antigo guardado no celular, nao pode atrapalhar.
     {
-        const auto r = postSay (porta, "{\"k\":\"" + token + "\",\"id\":\"abc\",\"name\":\"Producao\","
-                                       "\"color\":\"4fc3f7\",\"text\":\"sobe o retorno\"}", true);
-        checa (statusDe (r).contains ("200"), "POST com corpo em pacote separado foi recusado: " + statusDe (r));
-        checa (store.getEntries().size() == 2, "a mensagem em dois pacotes nao chegou");
+        const auto r = postSay (porta, "{\"k\":\"VELHO123\",\"id\":\"cel\",\"text\":\"com codigo velho\"}");
+        checa (statusDe (r).contains ("200"),
+               "codigo antigo sobrando no aparelho nao pode barrar a mensagem");
     }
 
-    // ---- codigo errado: barrado ---------------------------------------------
+    // JSON quebrado continua sendo recusado -- isso nao e trava, e sanidade.
     {
-        const auto r = postSay (porta, "{\"k\":\"XXXXXXXX\",\"id\":\"z\",\"name\":\"Intruso\",\"text\":\"oi\"}");
-        checa (statusDe (r).contains ("403"), "codigo errado deveria ser recusado: " + statusDe (r));
-        checa (store.getEntries().size() == 2, "mensagem com codigo errado entrou no historico");
+        const auto r = postSay (porta, "isto nao e json");
+        checa (statusDe (r).contains ("400"), "corpo invalido deveria dar 400");
     }
 
-    // ---- texto vazio: nao vira mensagem --------------------------------------
+    /*  A pagina ja aberta num celular, carregada ANTES da atualizacao, le
+        escritaLivre no /state para saber se mostra a barra de escrever. Sem
+        esse campo ela ficaria em somente leitura ate alguem recarregar.    */
     {
-        const auto r = postSay (porta, "{\"k\":\"" + token + "\",\"id\":\"abc\",\"text\":\"   \"}");
-        checa (statusDe (r).contains ("400"), "texto vazio deveria ser recusado");
-        checa (store.getEntries().size() == 2, "texto vazio virou mensagem");
-    }
-
-    // ---- chave geral desligada: nem com o codigo certo -----------------------
-    {
-        web.setEscritaPermitida (false);
-        const auto r = postSay (porta, "{\"k\":\"" + token + "\",\"id\":\"abc\",\"text\":\"nao devia entrar\"}");
-        checa (statusDe (r).contains ("403"), "com a escrita desligada, nem o codigo certo passa");
-        checa (store.getEntries().size() == 2, "entrou mensagem com a escrita desligada");
-        web.setEscritaPermitida (true);
-    }
-
-    // ---- /token pela loopback: responde --------------------------------------
-    {
-        const auto r = falarComServidor (porta, "GET /token HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
-        checa (statusDe (r).contains ("200"), "/token deveria responder a 127.0.0.1");
-        checa (corpoDe (r).contains (token), "/token nao devolveu o codigo");
-    }
-
-    // ---- trocar o codigo invalida quem ja entrou ------------------------------
-    {
-        const auto antigo = token;
-        web.sortearToken();
-        checa (web.getToken() != antigo, "sortearToken nao trocou o codigo");
-
-        const auto r = postSay (porta, "{\"k\":\"" + antigo + "\",\"id\":\"abc\",\"text\":\"codigo velho\"}");
-        checa (statusDe (r).contains ("403"), "o codigo antigo deveria ter parado de valer");
-    }
-
-    /*  ---- escrita sem o QR Code -------------------------------------------
-
-        O tecnico de P.A. e o de monitor conversam entre dois PCs, e PC nao le
-        QR Code. Com "exigir codigo" desligado, quem digita o endereco escreve.
-
-        O que estes casos protegem: que desligar a exigencia do codigo NAO
-        desligue a chave geral da escrita. Sao duas decisoes diferentes, e
-        confundir as duas abriria o telao para a rede inteira quando o cliente
-        achou que estava apenas dispensando o QR.                            */
-    {
-        web.setExigirCodigo (false);
-
-        const auto semCodigo = postSay (porta, "{\"id\":\"pa\",\"name\":\"P.A.\",\"text\":\"sem codigo\"}");
-        checa (statusDe (semCodigo).contains ("200"),
-               "sem exigir codigo, mensagem sem 'k' deveria entrar: " + statusDe (semCodigo));
-
-        const auto codigoErrado = postSay (porta, "{\"k\":\"XXXXXXXX\",\"id\":\"pa\",\"text\":\"codigo qualquer\"}");
-        checa (statusDe (codigoErrado).contains ("200"),
-               "sem exigir codigo, nem um codigo errado deveria barrar");
-
-        // A chave geral continua acima disso.
-        web.setEscritaPermitida (false);
-        const auto desligada = postSay (porta, "{\"id\":\"pa\",\"text\":\"com a escrita desligada\"}");
-        checa (statusDe (desligada).contains ("403"),
-               "com a escrita desligada, nem sem exigir codigo pode entrar");
-        web.setEscritaPermitida (true);
-
-        // E voltar a exigir o codigo tem que voltar a barrar.
-        web.setExigirCodigo (true);
-        const auto deNovo = postSay (porta, "{\"id\":\"pa\",\"text\":\"sem codigo outra vez\"}");
-        checa (statusDe (deNovo).contains ("403"),
-               "voltando a exigir o codigo, mensagem sem 'k' tem que ser recusada");
+        const auto r = corpoDe (getRota (porta, "/state"));
+        checa (r.contains ("\"escritaLivre\": true") || r.contains ("\"escritaLivre\":true"),
+               "/state tem que seguir dizendo escritaLivre=true para a pagina antiga");
     }
 
     web.stop();

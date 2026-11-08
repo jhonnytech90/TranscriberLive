@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Idioma.h"
+
 #include <juce_core/juce_core.h>
 #include <algorithm>
 #include "MessageStore.h"
@@ -17,21 +19,18 @@ namespace tl
           GET  /events   Server-Sent Events: msg / clear / flash / participants
           POST /clear    limpa o histórico
           POST /say      mensagem digitada num celular/tablet
-          GET  /token    o código de escrita — SÓ para quem chama de 127.0.0.1
 
-        Sobre /token e o código de escrita
-        ----------------------------------
-        Qualquer pessoa no Wi-Fi do local alcança este servidor. Sem nenhuma
-        barreira, qualquer uma delas escreveria no telão do cantor no meio do
-        show. O código resolve isso sem atrapalhar ninguém: ele vai dentro do
-        QR Code, então quem aponta a câmera já entra podendo escrever, e quem
-        só descobriu o endereço vê a conversa mas não escreve.
+        Quem abre, escreve
+        ------------------
+        Não há código nem permissão: quem alcança o endereço participa da
+        conversa. Houve um código dentro do QR Code, e ele saiu a pedido do
+        Jhonatan — atrapalhava mais do que protegia. Na prática a barreira
+        real é a rede: só escreve quem já está no Wi-Fi do local, e quem está
+        lá é a equipe. A alternativa custava uma explicação a cada show.
 
-        /token existe porque quem desenha o QR é o Receiver, que pode estar
-        em OUTRO processo na mesma máquina (o app do Display costuma ser o
-        primário). Ele responde só para 127.0.0.1: um processo da mesma
-        máquina lê o código, um celular na rede não. Se /token respondesse a
-        qualquer um, o código não valeria nada.
+        O que isso significa, dito claramente: numa rede de produção, tudo
+        bem. Num Wi-Fi aberto de casa de show, qualquer um que descubra o
+        endereço escreve no telão.
     */
     class HttpServer : private juce::Thread
     {
@@ -39,54 +38,6 @@ namespace tl
         HttpServer (MessageStore& s, const char* html, int htmlSize)
             : juce::Thread ("TranscriberLive HTTP"), store (s), pageHtml (html), pageHtmlSize (htmlSize)
         {
-            sortearToken();
-        }
-
-        //-- escrita pelos celulares -------------------------------------------------
-        /** Chave geral. Desligada, nem o código do QR deixa escrever. */
-        void setEscritaPermitida (bool p) noexcept
-        {
-            if (escritaPermitida.exchange (p) != p)
-                TL_LOGI ("web", juce::String ("escrita pelos celulares: ") + (p ? "LIGADA" : "desligada"));
-        }
-        bool isEscritaPermitida() const noexcept   { return escritaPermitida.load(); }
-
-        /*  Exigir o codigo do QR para escrever.
-
-            Ligado (padrao): so escreve quem apontou a camera. E o que separa a
-            producao de alguem que descobriu o endereco na rede do local.
-
-            Desligado: quem digitar o endereco tambem escreve. Existe porque o
-            tecnico de P.A. e o de monitor conversam entre dois PCs, e PC nao
-            tem camera para ler QR. Vale a pena dizer o que isso custa: na rede
-            do local, qualquer um que descubra o endereco passa a escrever no
-            telao. Numa rede de produção isso e aceitavel; num Wi-Fi aberto de
-            casa de show, pense duas vezes.                                   */
-        void setExigirCodigo (bool p) noexcept
-        {
-            if (exigirCodigo.exchange (p) != p)
-                TL_LOGI ("web", p ? "escrita exige o codigo do QR"
-                                  : "escrita liberada para quem digitar o endereco");
-        }
-        bool isExigirCodigo() const noexcept       { return exigirCodigo.load(); }
-
-        juce::String getToken() const { const juce::ScopedLock sl (tokenLock); return token; }
-
-        /** Novo código: invalida os aparelhos que já tinham entrado. Serve
-            para cortar o acesso de alguém sem desligar a função para todos. */
-        void sortearToken()
-        {
-            const juce::ScopedLock sl (tokenLock);
-            auto& r = juce::Random::getSystemRandom();
-            token.clear();
-
-            // Sem vogais e sem 0/O/1/I/l: o código as vezes e lido em voz alta
-            // ou digitado a mao, e esses caracteres se confundem.
-            static const char* alfabeto = "23456789BCDFGHJKLMNPQRSTVWXZ";
-            const int n = (int) strlen (alfabeto);
-
-            for (int i = 0; i < 8; ++i)
-                token << alfabeto[r.nextInt (n)];
         }
 
         ~HttpServer() override { stop(); }
@@ -168,6 +119,26 @@ namespace tl
             if (ip.startsWith ("100.")) return 60;  // CGNAT/Tailscale: nao e a rede da sala
             return 90;                              // publico: VPN, tunel. Nunca e o certo.
         }
+
+        /*  Em que tipo de rede este endereco esta, em portugues simples.
+
+            Serve para o tecnico escolher a rede certa sem saber o que e um
+            bloco RFC1918. A mesma nota que ordena a lista vira a explicacao:
+            se o endereco esta la em baixo na ordem, e porque dificilmente e a
+            rede em que o celular dele esta.                                 */
+        static juce::String tipoDaRede (const juce::String& ip)
+        {
+            switch (notaDoEndereco (ip))
+            {
+                case 0:  case 1:  case 2:  return tr ("Rede local");
+                case 50: return tr ("Rede virtual (VPN ou m\xc3\xa1quina virtual)");
+                case 60: return tr ("Rede do provedor (n\xc3\xa3o e a rede da sala)");
+                default: return tr ("Endere\xc3\xa7" "o p\xc3\xba" "blico (n\xc3\xa3o e a rede da sala)");
+            }
+        }
+
+        /** true quando este endereco e de uma rede local de verdade. */
+        static bool ehRedeLocal (const juce::String& ip) { return notaDoEndereco (ip) <= 2; }
 
         /** IPs desta maquina, O MELHOR PRIMEIRO (ver notaDoEndereco). */
         static juce::StringArray getLocalAddresses()
@@ -257,7 +228,6 @@ namespace tl
                 else if (path == "/state")        sendResponse ("200 OK", "application/json; charset=utf-8", stateJson());
                 else if (path == "/clear" && method == "POST") { server.store.clear(); sendResponse ("200 OK", "text/plain", "ok"); }
                 else if (path == "/say"   && method == "POST") atenderSay (lerCorpo (request, deadline));
-                else if (path == "/token")                     atenderToken (method, lerCorpo (request, deadline));
                 else if (path == "/" || path == "/index.html")
                     sendResponse ("200 OK", "text/html; charset=utf-8", juce::String::fromUTF8 (server.pageHtml, server.pageHtmlSize));
                 else
@@ -305,69 +275,14 @@ namespace tl
                 return corpo;
             }
 
-            /** So para quem chama da propria maquina. O Receiver precisa do
-                codigo para desenhar o QR; um celular na rede nao pode te-lo
-                de graca, senao o codigo nao protege nada. */
-            void atenderToken (const juce::String& method, const juce::String& corpo)
-            {
-                const auto quem = socket->getHostName();
-
-                if (quem != "127.0.0.1" && quem != "::1" && quem != "localhost")
-                {
-                    TL_LOGW ("web", "pedido de /token recusado, veio de " + quem);
-                    sendResponse ("403 Forbidden", "text/plain", "nao");
-                    return;
-                }
-
-                // POST: o Receiver manda a chave geral e pede codigo novo.
-                // Mesma porta de entrada do GET, e pela mesma razao: so a
-                // propria maquina pode mexer nisto.
-                if (method == "POST")
-                {
-                    if (auto* in = juce::JSON::parse (corpo).getDynamicObject())
-                    {
-                        if (in->hasProperty ("escrita"))
-                            server.setEscritaPermitida ((bool) in->getProperty ("escrita"));
-
-                        if (in->hasProperty ("exigirCodigo"))
-                            server.setExigirCodigo ((bool) in->getProperty ("exigirCodigo"));
-
-                        if ((bool) in->getProperty ("novo"))
-                            server.sortearToken();
-                    }
-                }
-
-                auto* o = new juce::DynamicObject();
-                o->setProperty ("token", server.getToken());
-                o->setProperty ("escrita", server.isEscritaPermitida());
-                o->setProperty ("exigirCodigo", server.isExigirCodigo());
-                sendResponse ("200 OK", "application/json; charset=utf-8",
-                              juce::JSON::toString (juce::var (o), true));
-            }
-
             void atenderSay (const juce::String& corpo)
             {
-                if (! server.isEscritaPermitida())
-                {
-                    sendResponse ("403 Forbidden", "text/plain", "escrita desligada no Receiver");
-                    return;
-                }
-
                 auto v = juce::JSON::parse (corpo);
                 auto* o = v.getDynamicObject();
 
                 if (o == nullptr)
                 {
                     sendResponse ("400 Bad Request", "text/plain", "json invalido");
-                    return;
-                }
-
-                if (server.isExigirCodigo()
-                    && o->getProperty ("k").toString() != server.getToken())
-                {
-                    TL_LOGW ("web", "mensagem recusada: codigo de escrita errado (de "
-                                    + socket->getHostName() + ")");
-                    sendResponse ("403 Forbidden", "text/plain", "codigo invalido");
                     return;
                 }
 
@@ -421,12 +336,11 @@ namespace tl
                 o->setProperty ("lastSeq", server.store.getLastSeq());
                 o->setProperty ("clearSeq", server.store.getClearSeq());
 
-                // A pagina precisa saber se pode mostrar a barra de escrever
-                // para quem chegou sem o codigo do QR -- senao o tecnico abre
-                // pelo endereco, a escrita esta liberada e ele ve "somente
-                // leitura" mesmo assim.
-                o->setProperty ("escritaLivre", server.isEscritaPermitida()
-                                                && ! server.isExigirCodigo());
+                // Sempre true: nao ha mais trava de escrita. Fica no JSON
+                // porque uma pagina ja aberta no celular, carregada antes da
+                // atualizacao, ainda pergunta por ela -- sem o campo, aquele
+                // aparelho ficaria em somente leitura ate recarregar.
+                o->setProperty ("escritaLivre", true);
                 return juce::JSON::toString (juce::var (o), true);
             }
 
@@ -542,12 +456,6 @@ namespace tl
         juce::OwnedArray<Connection> connections;
         std::atomic<bool> running { false };
 
-        // O codigo de escrita fica atras de lock porque sortearToken() pode
-        // ser chamado da UI enquanto uma thread de conexao esta validando.
-        mutable juce::CriticalSection tokenLock;
-        juce::String      token;
-        std::atomic<bool> escritaPermitida { true };
-        std::atomic<bool> exigirCodigo     { true };
         int boundPort = 0;
     };
 }

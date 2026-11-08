@@ -74,7 +74,7 @@ namespace tl
         {
             // ultimo recurso: nao e ideal (muda se a maquina for renomeada), mas
             // e melhor do que nao conseguir ativar de jeito nenhum.
-            TL_TRACE ("machine-id: nenhuma fonte de hardware respondeu — usando fallback");
+            TL_TRACE ("machine-id: nenhuma fonte de hardware respondeu \xe2\x80\x94 usando fallback");
             out.add (License::normalise ("fallback:" + juce::SystemStats::getComputerName()
                                          + ":" + juce::SystemStats::getFullUserName()));
         }
@@ -117,8 +117,8 @@ namespace tl
                 blob += line.trim();
         blob = blob.removeCharacters (" \t\r\n");
 
-        if (blob.isEmpty())            { info.error = "Nenhuma licença informada."; return info; }
-        if (! blob.containsChar ('.')) { info.error = "Formato inválido (o texto parece incompleto)."; return info; }
+        if (blob.isEmpty())            { info.error = "Nenhuma licen\xc3\xa7" "a informada."; return info; }
+        if (! blob.containsChar ('.')) { info.error = "Formato inv\xc3\xa1lido (o texto parece incompleto)."; return info; }
 
         const auto b64    = blob.upToLastOccurrenceOf (".", false, false);
         const auto sigHex = blob.fromLastOccurrenceOf (".", false, false);
@@ -127,7 +127,7 @@ namespace tl
         juce::MemoryOutputStream payload;
         if (! juce::Base64::convertFromBase64 (payload, b64) || payload.getDataSize() == 0)
         {
-            info.error = "Conteúdo ilegível — copie a licença inteira, incluindo todas as linhas.";
+            info.error = "Conte\xc3\xba" "do ileg\xc3\xadvel \xe2\x80\x94 copie a licen\xc3\xa7" "a inteira, incluindo todas as linhas.";
             return info;
         }
 
@@ -141,7 +141,7 @@ namespace tl
         const juce::RSAKey publicKey (kPublicKey);
         if (! publicKey.applyToValue (value) || value != digest)
         {
-            info.error = "Assinatura inválida — esta licença não foi emitida para o Transcriber Live.";
+            info.error = "Assinatura inv\xc3\xa1lida \xe2\x80\x94 esta licen\xc3\xa7" "a n\xc3\xa3o foi emitida para o Transcriber Live.";
             return info;
         }
 
@@ -159,20 +159,20 @@ namespace tl
 
             if (o->getProperty ("prod").toString() != kProduct)
             {
-                info.error = "Licença de outro produto.";
+                info.error = "Licen\xc3\xa7" "a de outro produto.";
                 return info;
             }
         }
         else
         {
-            info.error = "Conteúdo ilegível.";
+            info.error = "Conte\xc3\xba" "do ileg\xc3\xadvel.";
             return info;
         }
 
         // 5. máquina
         if (! getAllMachineIds().contains (info.machineId))
         {
-            info.error = "Esta licença foi emitida para outro computador (" + info.machineId + ").";
+            info.error = "Esta licen\xc3\xa7" "a foi emitida para outro computador (" + info.machineId + ").";
             return info;
         }
 
@@ -182,7 +182,7 @@ namespace tl
             const auto today = juce::Time::getCurrentTime().formatted ("%Y-%m-%d");
             if (today > info.expires)
             {
-                info.error = "Licença expirada em " + info.expires + ".";
+                info.error = "Licen\xc3\xa7" "a expirada em " + info.expires + ".";
                 return info;
             }
         }
@@ -200,9 +200,9 @@ namespace tl
             const auto pasta = f.getParentDirectory();
             if (pasta.isDirectory() && ! pasta.hasWriteAccess())
                 info.error = "A pasta de dados esta bloqueada para o seu usuario ("
-                           + pasta.getFullPathName() + ") — por isso a ativacao nao grava.";
+                           + pasta.getFullPathName() + ") \xe2\x80\x94 por isso a ativacao nao grava.";
             else
-                info.error = "Nenhuma licença instalada nesta máquina.";
+                info.error = "Nenhuma licen\xc3\xa7" "a instalada nesta m\xc3\xa1quina.";
             return info;
         }
         return verify (f.loadFileAsString());
@@ -240,7 +240,7 @@ namespace tl
                        + f.getFullPathName()
                        + (pasta.hasWriteAccess()
                             ? "."
-                            : juce::String (" — a pasta nao tem permissao de escrita para o seu usuario."));
+                            : juce::String (" \xe2\x80\x94 a pasta nao tem permissao de escrita para o seu usuario."));
             return info;
         }
 

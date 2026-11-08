@@ -154,92 +154,6 @@ namespace tl
             return "http://" + ip + ":" + juce::String (httpPort);
         }
 
-        //-- escrita pelos celulares ------------------------------------------------
-        /*  Estes quatro metodos existem porque o servidor web pode nao estar
-            NESTE processo. Quando o app do Display esta aberto ao lado, e ele
-            quem segurou a porta, e o Receiver vira secundario -- mas quem
-            desenha o QR Code (e quem tem a chave geral na interface) e o
-            Receiver. Entao: se somos o primario, mexemos direto; se nao,
-            falamos com o primario por 127.0.0.1, que e o unico endereco que
-            /token aceita.                                                    */
-
-        /** Codigo que vai dentro do QR. Vazio = nao consegui falar com o
-            primario; quem chama decide o que mostrar. */
-        juce::String getTokenEscrita() const
-        {
-            if (isWebPrimary())
-                return web.getToken();
-
-            const juce::ScopedLock sl (tokenRemotoLock);
-            return tokenRemoto;
-        }
-
-        bool isEscritaPermitida() const
-        {
-            if (isWebPrimary())
-                return web.isEscritaPermitida();
-
-            const juce::ScopedLock sl (tokenRemotoLock);
-            return escritaRemota;
-        }
-
-        void setEscritaPermitida (bool permitir)
-        {
-            if (isWebPrimary())
-            {
-                web.setEscritaPermitida (permitir);
-                salvarEscrita (permitir);
-                return;
-            }
-
-            falarComPrimario (permitir, false);
-            salvarEscrita (permitir);
-        }
-
-        /*  Exigir o codigo do QR para escrever.
-
-            Desligado, quem digitar o endereco escreve. E o caminho do tecnico
-            de P.A. falando com o de monitor: os dois estao em PC, e PC nao tem
-            camera para ler QR Code.                                          */
-        bool isExigirCodigo() const
-        {
-            if (isWebPrimary()) return web.isExigirCodigo();
-            const juce::ScopedLock sl (tokenRemotoLock);
-            return exigirRemoto;
-        }
-
-        void setExigirCodigo (bool exigir)
-        {
-            if (isWebPrimary())
-            {
-                web.setExigirCodigo (exigir);
-                salvarExigir (exigir);
-                return;
-            }
-
-            {   // a interface le isto no proximo refresh: nao espera a volta
-                const juce::ScopedLock sl (tokenRemotoLock);
-                exigirRemoto = exigir;
-            }
-            falarComPrimario (web.isEscritaPermitida(), false, &exigir);
-            salvarExigir (exigir);
-        }
-
-        /** Sorteia um codigo novo: os aparelhos que ja entraram param de
-            escrever ate lerem o QR de novo. E o "corta o acesso daquele
-            sujeito" sem desligar a funcao para todo mundo. */
-        void trocarTokenEscrita()
-        {
-            if (isWebPrimary())
-            {
-                web.sortearToken();
-                TL_LOGI ("hub", "codigo de escrita trocado");
-                return;
-            }
-
-            falarComPrimario (isEscritaPermitida(), true);
-        }
-
         void setPorts (int newBusPort, int newHttpPort)
         {
             busPort  = newBusPort  > 0 ? newBusPort  : kDefaultBusPort;
@@ -383,12 +297,6 @@ namespace tl
                     mirroring.store (ok);
                     if (ok) store.applyStateJson (json);
 
-                    // Aproveita a volta para trazer o codigo de escrita do
-                    // primario. Fica aqui, e nao na interface, porque e uma
-                    // chamada de rede: na thread da UI ela travaria a janela
-                    // do plugin toda vez que o primario demorasse.
-                    if (ok && ! saindo()) buscarTokenDoPrimario();
-
                     wait (ok ? 400 : 1500);
                 }
                 else
@@ -404,37 +312,12 @@ namespace tl
                     fechamento, que e onde doia.                             */
                 if (saindo()) break;
 
-                enviarPendentes();
-                if (saindo()) break;
-
                 buscarDoParceiro();
             }
         }
 
         /** Hora de sair: pediram para parar a thread ou o Hub esta acabando. */
         bool saindo() const { return threadShouldExit() || encerrando.load(); }
-
-        /*  Pedidos ao primario, feitos NA NOSSA thread.
-
-            Antes cada clique soltava uma thread avulsa que capturava `this`.
-            Se o plugin fechasse antes dela acordar, ela mexia num Hub que nao
-            existia mais. Esta thread o destrutor espera; aquela, ninguem.   */
-        void enviarPendentes()
-        {
-            for (;;)
-            {
-                juce::String corpo;
-                {
-                    const juce::ScopedLock sl (filaLock);
-                    if (fila.isEmpty()) return;
-                    corpo = fila[0];
-                    fila.remove (0);
-                }
-
-                guardarResposta (pedir (corpo));
-                if (saindo()) return;
-            }
-        }
 
         /*  Puxa o estado da maquina parceira e junta ao nosso.
 
@@ -462,70 +345,6 @@ namespace tl
             if (ok) store.applyStateJson (json, false);
         }
 
-        //-- ponte com o primario (so 127.0.0.1 responde a /token) -----------------
-        juce::String pedir (const juce::String& corpoPost) const
-        {
-            juce::URL url ("http://127.0.0.1:" + juce::String (httpPort) + "/token");
-
-            if (corpoPost.isNotEmpty())
-                url = url.withPOSTData (corpoPost);
-
-            auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inPostData)
-                            .withConnectionTimeoutMs (800)
-                            .withExtraHeaders ("Content-Type: application/json")
-                            .withHttpRequestCmd (corpoPost.isNotEmpty() ? "POST" : "GET");
-
-            if (auto in = url.createInputStream (opts))
-                return in->readEntireStreamAsString();
-
-            return {};
-        }
-
-        void guardarResposta (const juce::String& json)
-        {
-            if (auto* o = juce::JSON::parse (json).getDynamicObject())
-            {
-                const juce::ScopedLock sl (tokenRemotoLock);
-                tokenRemoto   = o->getProperty ("token").toString();
-                escritaRemota = (bool) o->getProperty ("escrita");
-                if (o->hasProperty ("exigirCodigo"))
-                    exigirRemoto = (bool) o->getProperty ("exigirCodigo");
-            }
-        }
-
-        void buscarTokenDoPrimario() { guardarResposta (pedir ({})); }
-
-        void falarComPrimario (bool permitir, bool novoToken, const bool* exigir = nullptr)
-        {
-            /*  Nao manda daqui: isto sai de um clique na interface, e uma
-                chamada de rede sincrona ali travaria a janela do plugin.
-                Vai para a fila e a thread de sincronismo manda -- o notify()
-                abaixo a acorda na hora, entao o clique nao fica esperando o
-                proximo ciclo.                                               */
-            auto* o = new juce::DynamicObject();
-            o->setProperty ("escrita", permitir);
-            o->setProperty ("novo", novoToken);
-            if (exigir != nullptr) o->setProperty ("exigirCodigo", *exigir);
-
-            {
-                const juce::ScopedLock sl (filaLock);
-                fila.add (juce::JSON::toString (juce::var (o), true));
-            }
-            notify();
-        }
-
-        void salvarEscrita (bool permitir)
-        {
-            escritaSalva = permitir;
-            saveSettings();
-        }
-
-        void salvarExigir (bool exigir)
-        {
-            exigirSalvo = exigir;
-            saveSettings();
-        }
-
         void loadSettings()
         {
             auto f = getDataDir().getChildFile ("settings.xml");
@@ -533,18 +352,12 @@ namespace tl
             {
                 busPort  = xml->getIntAttribute ("busPort",  kDefaultBusPort);
                 httpPort = xml->getIntAttribute ("httpPort", kDefaultHttpPort);
-                escritaSalva = xml->getBoolAttribute ("escritaCelular", true);
-                // Padrao true: quem atualiza nao ganha o telao aberto para a
-                // rede sem ter pedido.
-                exigirSalvo  = xml->getBoolAttribute ("exigirCodigo", true);
                 idiomaEscolhido = (Idioma) juce::jlimit (0, 2,
                                       xml->getIntAttribute ("idioma", 0));
                 { const juce::ScopedLock sl (parceiroLock);
                   parceiro = xml->getStringAttribute ("parceiro", {}).trim(); }
             }
 
-            web.setEscritaPermitida (escritaSalva);
-            web.setExigirCodigo (exigirSalvo);
         }
 
         void saveSettings()
@@ -552,8 +365,6 @@ namespace tl
             juce::XmlElement xml ("TranscriberLive");
             xml.setAttribute ("busPort", busPort);
             xml.setAttribute ("httpPort", httpPort);
-            xml.setAttribute ("escritaCelular", escritaSalva);
-            xml.setAttribute ("exigirCodigo", exigirSalvo);
             xml.setAttribute ("idioma", (int) idiomaEscolhido);
             xml.setAttribute ("parceiro", getParceiro());
             getDataDir().createDirectory();
@@ -565,20 +376,11 @@ namespace tl
         int busPort = kDefaultBusPort, httpPort = kDefaultHttpPort;
         std::atomic<bool> mirroring { false };
         std::atomic<bool> encerrando { false };
-        juce::CriticalSection filaLock;
-        juce::StringArray fila;
-        bool exigirSalvo = true;
         Idioma idiomaEscolhido = Idioma::automatico;
         mutable juce::CriticalSection parceiroLock;
         juce::String parceiro;
         std::atomic<bool> parceiroOnline { false };
 
-        bool escritaSalva = true;
-
         // Copia do que o primario respondeu, quando o servidor nao e nosso.
-        mutable juce::CriticalSection tokenRemotoLock;
-        juce::String tokenRemoto;
-        bool         escritaRemota = true;
-        bool exigirRemoto = true;
     };
 }

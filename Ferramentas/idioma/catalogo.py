@@ -49,31 +49,12 @@ EN = {
 
 # --- painel do QR
 "Copiar endereço": "Copy address",
-"Celulares podem escrever": "Phones can write",
-"Sem precisar do QR (vale digitar o endereço)": "No QR needed (typing the address works)",
-"Trocar código": "New code",
-"Outra rede (%1 de %2)": "Other network (%1 of %2)",
-"Esta máquina tem mais de uma rede. Se o celular não abrir a página, troque aqui até achar a rede em que ele está.":
-  "This machine is on more than one network. If the phone doesn't open the page, switch here until you find the one it's on.",
-"Para PC, que nao le QR Code. Com isto ligado, quem digitar o endereço no navegador também escreve — inclusive quem só descobriu o endereço na rede do local.":
-  "For PCs, which can't read a QR code. With this on, anyone who types the address in a browser can write too — including anyone who merely found the address on the venue's network.",
-"Desligado, ninguém escreve pelo celular, nem quem já leu o QR.":
-  "Off, nobody writes from a phone, not even someone who already scanned the QR.",
-"Sorteia um código novo: os aparelhos que já entraram param de escrever até lerem o QR de novo. Serve para cortar o acesso de alguém sem desligar a função para todos.":
-  "Draws a new code: devices already in stop writing until they scan the QR again. Use it to cut one person's access without turning the feature off for everyone.",
 "Sem rede": "No network",
 "Esta máquina não tem endereço de rede local. Conecte no mesmo Wi-Fi do celular.":
   "This machine has no local network address. Connect it to the same Wi-Fi as the phone.",
 "Endereço para o celular": "Address for the phone",
 "Não consegui gerar o QR para este endereço. Digite no navegador.":
   "I couldn't generate the QR for this address. Type it in the browser.",
-"Aponte a câmera do celular": "Point the phone's camera",
-"Display em outra máquina: aqui o QR abre só para leitura. Para escrever, use o QR do Receiver daquela máquina.":
-  "Display on another machine: this QR opens read-only. To write, use the QR from the Receiver on that machine.",
-"Quem ler o QR pode escrever no telão. Quem só digitar o endereço vê a conversa, mas não escreve.":
-  "Whoever scans the QR can write on the screen. Whoever only types the address sees the conversation but can't write.",
-"Ainda não peguei o código de escrita do Display. Abra de novo em alguns segundos.":
-  "I haven't picked up the Display's writing code yet. Open this again in a few seconds.",
 
 # ---------------------------------------------------------------- Display
 "Flash": "Flash",
@@ -151,4 +132,20 @@ EN.update({
 "serial ": "serial ",
 "Idioma": "Language",
 "ex.: 192.168.0.20 ou 192.168.0.20:47801": "e.g. 192.168.0.20 or 192.168.0.20:47801",
+})
+
+# Painel do QR e escolha de rede (versão nova, sem trava de escrita)
+EN.update({
+"Rede desta máquina": "This machine's network",
+"Rede local": "Local network",
+"Rede virtual (VPN ou máquina virtual)": "Virtual network (VPN or virtual machine)",
+"Rede do provedor (não e a rede da sala)": "Carrier network (not the room's network)",
+"Endereço público (não e a rede da sala)": "Public address (not the room's network)",
+"Computador: ": "Computer: ",
+"O celular provavelmente nao alcanca esta. Prefira uma rede local.":
+  "The phone probably can't reach this one. Prefer a local network.",
+"Aponte a câmera do celular. Quem abrir a página, pela câmera ou digitando o endereço, já pode escrever.":
+  "Point the phone's camera. Anyone who opens the page, by camera or by typing the address, can write.",
+"Display em outra máquina: o QR abre a página de lá.":
+  "Display on another machine: the QR opens that machine's page.",
 })

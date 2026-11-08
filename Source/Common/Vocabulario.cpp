@@ -81,7 +81,7 @@ void Vocabulario::parse (const juce::String& conteudo)
             const auto nome = linha.removeCharacters ("[]").trim().toLowerCase();
             secao = nome.startsWith ("prompt") ? Secao::prompt
                   : (nome.startsWith ("acento") || nome.startsWith ("correcao")
-                     || nome.startsWith ("correção")) ? Secao::acentos_
+                     || nome.startsWith ("corre\xc3\xa7\xc3\xa3o")) ? Secao::acentos_
                                                       : Secao::nenhuma;
             continue;
         }
@@ -118,7 +118,7 @@ juce::String Vocabulario::montarPrompt() const
 juce::String Vocabulario::normalizar (const juce::String& s)
 {
     static const juce::String comAcento =
-        juce::String::fromUTF8 ("áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ");
+        juce::String::fromUTF8 ("\xc3\xa1\xc3\xa0\xc3\xa2\xc3\xa3\xc3\xa4\xc3\xa9\xc3\xa8\xc3\xaa\xc3\xab\xc3\xad\xc3\xac\xc3\xae\xc3\xaf\xc3\xb3\xc3\xb2\xc3\xb4\xc3\xb5\xc3\xb6\xc3\xba\xc3\xb9\xc3\xbb\xc3\xbc\xc3\xa7\xc3\xb1\xc3\x81\xc3\x80\xc3\x82\xc3\x83\xc3\x84\xc3\x89\xc3\x88\xc3\x8a\xc3\x8b\xc3\x8d\xc3\x8c\xc3\x8e\xc3\x8f\xc3\x93\xc3\x92\xc3\x94\xc3\x95\xc3\x96\xc3\x9a\xc3\x99\xc3\x9b\xc3\x9c\xc3\x87\xc3\x91");
     static const juce::String semAcento =
         juce::String::fromUTF8 ("aaaaaeeeeiiiiooooouuuucnAAAAAEEEEIIIIOOOOOUUUUCN");
 

@@ -360,7 +360,7 @@ void TranscriberLiveAudioProcessorEditor::setControlsVisible (bool v)
 {
     for (auto* c : std::initializer_list<juce::Component*> {
              &nameLabel, &nameEditor, &colourButton, &importanceLabel, &importanceBox, &flashButton,
-             &qrButton, &modoLabel, &modoBox, &meter, &speechLabel,
+             &qrButton, &modoLabel, &modoBox, &idiomaBox, &meter, &speechLabel,
              &gateSlider, &vadSlider, &holdSlider, &gateLabel, &vadLabel, &holdLabel,
              &partialsButton, &lastLineLabel })
         c->setVisible (v);
@@ -532,17 +532,6 @@ juce::String TranscriberLiveAudioProcessorEditor::urlDoDisplay() const
     const int i = juce::jlimit (0, ips.size() - 1, enderecoEscolhido);
     juce::String url = "http://" + ips[i] + ":" + juce::String (processor.hub->getHttpPort()) + "/";
 
-    // O codigo de escrita viaja DENTRO do QR. E o que separa quem apontou a
-    // camera de quem so descobriu o endereco na rede: o primeiro escreve, o
-    // segundo le. Nao atrapalha ninguem, porque ler o QR ja e o caminho
-    // normal de abrir a pagina.
-    //
-    // So entra quando a pagina e desta maquina. Com o Display em outra
-    // maquina nao temos como saber o codigo de la -- /token so responde a
-    // 127.0.0.1, de proposito -- e o painel explica isso.
-    if (const auto k = processor.hub->getTokenEscrita(); k.isNotEmpty())
-        url << "?k=" << k;
-
     return url;
 }
 
@@ -552,17 +541,13 @@ void TranscriberLiveAudioProcessorEditor::showQr()
 
     struct Panel : juce::Component
     {
-        juce::Label        titulo, endereco, aviso;
-        juce::TextButton   copiar { tl::tr ("Copiar endere\xc3\xa7" "o") };
-        juce::ToggleButton escrever { tl::tr ((
-                               "Celulares podem escrever")) };
-        juce::ToggleButton semQr { tl::tr ((
-                               "Sem precisar do QR (vale digitar o endere\xc3\xa7" "o)")) };
-        juce::TextButton   novoCodigo { tl::tr (("Trocar c\xc3\xb3" "digo")) };
-        juce::TextButton   outraRede;
-        bool               temOutraRede = false;
-        tl::QrCode         qr;
-        bool               temQr = false;
+        juce::Label      titulo, endereco, aviso, redeLabel, redeDetalhe;
+        juce::TextButton copiar { tl::tr ("Copiar endere\xc3\xa7" "o") };
+        juce::ComboBox   redes;
+        bool             temEscolhaDeRede = false;
+        tl::QrCode       qr;
+        bool             temQr = false;
+        juce::Rectangle<int> areaQr;
 
         void paint (juce::Graphics& g) override
         {
@@ -573,8 +558,6 @@ void TranscriberLiveAudioProcessorEditor::showQr()
             qr.desenhar (g, areaQr, juce::Colours::white, juce::Colours::black);
         }
 
-        juce::Rectangle<int> areaQr;
-
         void resized() override
         {
             auto r = getLocalBounds().reduced (10);
@@ -583,56 +566,28 @@ void TranscriberLiveAudioProcessorEditor::showQr()
             areaQr = r.removeFromTop (190);
             r.removeFromTop (8);
             endereco.setBounds (r.removeFromTop (20));
-            if (temOutraRede)
-            {
-                r.removeFromTop (4);
-                outraRede.setBounds (r.removeFromTop (24));
-            }
             r.removeFromTop (2);
-            aviso.setBounds (r.removeFromTop (44));
-            r.removeFromTop (4);
-            escrever.setBounds (r.removeFromTop (24));
-            semQr.setBounds (r.removeFromTop (22));
-            r.removeFromTop (4);
-            auto linha = r.removeFromTop (26);
-            copiar.setBounds (linha.removeFromLeft (linha.getWidth() / 2 - 3));
-            novoCodigo.setBounds (linha.removeFromRight (linha.getWidth() - 6));
+            aviso.setBounds (r.removeFromTop (34));
+
+            if (temEscolhaDeRede)
+            {
+                r.removeFromTop (6);
+                redeLabel.setBounds (r.removeFromTop (16));
+                redes.setBounds (r.removeFromTop (26));
+                redeDetalhe.setBounds (r.removeFromTop (30));
+            }
+
+            r.removeFromTop (6);
+            copiar.setBounds (r.removeFromTop (26));
         }
     };
 
     auto panel = std::make_unique<Panel>();
     auto* p = panel.get();
 
-    for (auto* c : std::initializer_list<juce::Component*> { &p->titulo, &p->endereco, &p->aviso,
-                                                            &p->copiar, &p->escrever, &p->novoCodigo,
-                                                            &p->semQr })
+    for (auto* c : std::initializer_list<juce::Component*> { &p->titulo, &p->endereco,
+                                                             &p->aviso, &p->copiar })
         p->addAndMakeVisible (c);
-
-    /*  Trocar de rede.
-
-        Chamado real: a maquina do cliente tinha VPN ligada e a lista comecava
-        por um IP PUBLICO da Amazon. O QR apontava para la e o celular ficava na
-        tela preta. A ordenacao agora poe a rede local na frente, mas quem tem
-        cabo E Wi-Fi ainda pode ter a escolhida errada -- e so a pessoa na sala
-        sabe em qual rede o celular esta. Entao: escolhemos bem, e deixamos
-        trocar.                                                              */
-    const auto todosIps = tl::HttpServer::getLocalAddresses();
-    p->temOutraRede = todosIps.size() > 1;
-
-    if (p->temOutraRede)
-    {
-        const int atual = juce::jlimit (0, todosIps.size() - 1, enderecoEscolhido);
-        /*  Frase inteira na tabela, nao pedaco por pedaco: "de" entre dois
-            numeros nao e "of" em toda lingua, e tradutor que recebe "Outra
-            rede (" solto nao tem como saber o que vem depois.             */
-        p->outraRede.setButtonText (tl::tr ("Outra rede (%1 de %2)")
-                                        .replace ("%1", juce::String (atual + 1))
-                                        .replace ("%2", juce::String (todosIps.size())));
-        p->outraRede.setTooltip (tl::tr ((
-            "Esta m\xc3\xa1quina tem mais de uma rede. Se o celular n\xc3\xa3o abrir a p\xc3\xa1gina, "
-            "troque aqui at\xc3\xa9 achar a rede em que ele est\xc3\xa1.")));
-        p->addAndMakeVisible (p->outraRede);
-    }
 
     p->titulo.setJustificationType (juce::Justification::centred);
     p->endereco.setJustificationType (juce::Justification::centred);
@@ -640,79 +595,68 @@ void TranscriberLiveAudioProcessorEditor::showQr()
     p->aviso.setJustificationType (juce::Justification::centredTop);
     p->aviso.setFont (juce::FontOptions (11.0f));
     p->aviso.setColour (juce::Label::textColourId, tl::col::dim);
-    p->setSize (270, 412);   // +30 quando ha botao de trocar de rede (abaixo)
 
-    // ---- chave geral da escrita --------------------------------------------
-    // Fica aqui, junto do QR, porque e a mesma decisao: quem pode escrever no
-    // telao. Desligada, nem quem leu o QR escreve.
-    /*  Dispensar o QR.
+    /*  Escolha da rede.
 
-        Existe para o tecnico de P.A. falar com o de monitor: os dois estao em
-        PC, e PC nao tem camera para ler QR Code.
+        Chamado real: a maquina do cliente tinha VPN ligada e a lista comecava
+        por um IP PUBLICO da Amazon. O QR apontava para la e o celular ficava na
+        tela preta. A ordenacao poe a rede local na frente, mas quem tem cabo E
+        Wi-Fi ainda pode ter a escolhida errada -- e so a pessoa na sala sabe em
+        qual rede o celular esta.
 
-        Fica DESLIGADO por padrao, e o aviso diz por que: sem o codigo, qualquer
-        um que descubra o endereco na rede do local escreve no telao. Numa rede
-        de producao tudo bem; num Wi-Fi aberto de casa de show, nao.          */
-    p->semQr.setToggleState (! processor.hub->isExigirCodigo(), juce::dontSendNotification);
-    p->semQr.setEnabled (processor.hub->isEscritaPermitida());
-    p->semQr.setTooltip (tl::tr ((
-        "Para PC, que nao le QR Code. Com isto ligado, quem digitar o endere\xc3\xa7" "o "
-        "no navegador tamb\xc3\xa9m escreve \xe2\x80\x94 inclusive quem s\xc3\xb3 descobriu o "
-        "endere\xc3\xa7" "o na rede do local.")));
+        Antes isto era um botao que girava entre os enderecos as cegas: o
+        tecnico clicava e torcia. Agora ele ve a lista inteira, com o IP e que
+        tipo de rede e cada um, e escolhe sabendo.                           */
+    const auto todosIps = tl::HttpServer::getLocalAddresses();
+    p->temEscolhaDeRede = todosIps.size() > 1;
 
-    p->escrever.setToggleState (processor.hub->isEscritaPermitida(), juce::dontSendNotification);
-    p->escrever.setTooltip (tl::tr ((
-        "Desligado, ningu\xc3\xa9m escreve pelo celular, nem quem j\xc3\xa1 leu o QR.")));
+    if (p->temEscolhaDeRede)
+    {
+        for (auto* c : std::initializer_list<juce::Component*> { &p->redeLabel, &p->redes,
+                                                                 &p->redeDetalhe })
+            p->addAndMakeVisible (c);
 
-    p->novoCodigo.setTooltip (tl::tr ((
-        "Sorteia um c\xc3\xb3" "digo novo: os aparelhos que j\xc3\xa1 entraram param de "
-        "escrever at\xc3\xa9 lerem o QR de novo. Serve para cortar o acesso de algu\xc3\xa9m "
-        "sem desligar a fun\xc3\xa7\xc3\xa3o para todos.")));
+        p->redeLabel.setText (tl::tr ("Rede desta m\xc3\xa1quina"), juce::dontSendNotification);
+        p->redeLabel.setFont (juce::FontOptions (11.0f));
+        p->redeLabel.setColour (juce::Label::textColourId, tl::col::dim);
+
+        for (int i = 0; i < todosIps.size(); ++i)
+            p->redes.addItem (todosIps[i] + "   \xe2\x80\xa2   " + tl::HttpServer::tipoDaRede (todosIps[i]),
+                              i + 1);
+
+        const int atual = juce::jlimit (0, todosIps.size() - 1, enderecoEscolhido);
+        p->redes.setSelectedItemIndex (atual, juce::dontSendNotification);
+
+        p->redeDetalhe.setFont (juce::FontOptions (11.0f));
+        p->redeDetalhe.setColour (juce::Label::textColourId, tl::col::dim);
+        p->redeDetalhe.setJustificationType (juce::Justification::topLeft);
+
+        auto explicar = [p, todosIps] (int i)
+        {
+            const auto ip = todosIps[juce::jlimit (0, todosIps.size() - 1, i)];
+            juce::String s = tl::tr ("Computador: ") + juce::SystemStats::getComputerName();
+            if (! tl::HttpServer::ehRedeLocal (ip))
+                s << "\n" << tl::tr ("O celular provavelmente nao alcanca esta. Prefira uma rede local.");
+            p->redeDetalhe.setText (s, juce::dontSendNotification);
+        };
+        explicar (atual);
+
+        juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> safeRede (this);
+        p->redes.onChange = [safeRede, p, explicar]
+        {
+            if (safeRede == nullptr) return;
+            safeRede->enderecoEscolhido = p->redes.getSelectedItemIndex();
+            explicar (safeRede->enderecoEscolhido);
+
+            // Redesenha: o QR e o endereco escrito mudaram.
+            if (auto* box = p->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
+            safeRede->showQr();
+        };
+    }
+
+    p->setSize (300, p->temEscolhaDeRede ? 430 : 352);
 
     juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> safeQr (this);
-
-    p->escrever.onClick = [safeQr, p]
-    {
-        if (safeQr == nullptr) return;
-        const bool permitir = p->escrever.getToggleState();
-        safeQr->processor.hub->setEscritaPermitida (permitir);
-
-        // Com a escrita desligada, "dispensar o QR" nao quer dizer nada.
-        p->semQr.setEnabled (permitir);
-    };
-
-    p->semQr.onClick = [safeQr, p]
-    {
-        if (safeQr == nullptr) return;
-        safeQr->processor.hub->setExigirCodigo (! p->semQr.getToggleState());
-
-        // Redesenha: o texto embaixo do QR muda, porque agora quem digita o
-        // endereco tambem escreve.
-        if (auto* box = p->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
-        safeQr->showQr();
-    };
-
-    p->outraRede.onClick = [safeQr, p]
-    {
-        if (safeQr == nullptr) return;
-        const auto ips = tl::HttpServer::getLocalAddresses();
-        if (ips.size() > 1)
-            safeQr->enderecoEscolhido = (safeQr->enderecoEscolhido + 1) % ips.size();
-
-        if (auto* box = p->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
-        safeQr->showQr();
-    };
-
-    p->novoCodigo.onClick = [safeQr, p]
-    {
-        if (safeQr == nullptr) return;
-        safeQr->processor.hub->trocarTokenEscrita();
-
-        // Redesenha com o codigo novo: o QR antigo ficou invalido no instante
-        // do clique, e deixar ele na tela so faria o tecnico tentar duas vezes.
-        if (auto* box = p->findParentComponentOfClass<juce::CallOutBox>()) box->dismiss();
-        safeQr->showQr();
-    };
 
     if (url.isEmpty())
     {
@@ -721,54 +665,29 @@ void TranscriberLiveAudioProcessorEditor::showQr()
             "Esta m\xc3\xa1quina n\xc3\xa3o tem endere\xc3\xa7o de rede local. "
             "Conecte no mesmo Wi-Fi do celular.")), juce::dontSendNotification);
         p->copiar.setEnabled (false);
-        p->setSize (260, 150);
-    }
-    else if (! tl::QrCode::gerar (url, p->qr))
-    {
-        // Endereco longo demais para as versoes que geramos. Nao acontece com
-        // IP de rede local, mas se acontecer o tecnico ainda consegue digitar.
-        p->titulo.setText (tl::tr ("Endere\xc3\xa7" "o para o celular"),
-                           juce::dontSendNotification);
-        p->endereco.setText (url, juce::dontSendNotification);
-        p->aviso.setText (tl::tr ((
-            "N\xc3\xa3o consegui gerar o QR para este endere\xc3\xa7o. Digite no navegador.")),
-            juce::dontSendNotification);
-        p->setSize (260, 170);
     }
     else
     {
-        p->temQr = true;
-        if (p->temOutraRede) p->setSize (270, 442);
-        const auto id = processor.getIdentity();
-        const bool temCodigo = url.contains ("?k=");
+        p->titulo.setText (tl::tr ("Endere\xc3\xa7" "o para o celular"), juce::dontSendNotification);
+        p->endereco.setText (url, juce::dontSendNotification);
+        p->temQr = p->qr.gerar (url);
 
-        p->titulo.setText (tl::tr ((
-            "Aponte a c\xc3\xa2mera do celular")), juce::dontSendNotification);
+        if (! p->temQr)
+            p->aviso.setText (tl::tr ((
+                "N\xc3\xa3o consegui gerar o QR para este endere\xc3\xa7o. Digite no navegador.")),
+                juce::dontSendNotification);
+        else if (processor.getIdentity().remoteHost.isNotEmpty())
+            p->aviso.setText (tl::tr ((
+                "Display em outra m\xc3\xa1quina: o QR abre a p\xc3\xa1gina de l\xc3\xa1.")),
+                juce::dontSendNotification);
+        else
+            p->aviso.setText (tl::tr ((
+                "Aponte a c\xc3\xa2mera do celular. Quem abrir a p\xc3\xa1gina, "
+                "pela c\xc3\xa2mera ou digitando o endere\xc3\xa7o, j\xc3\xa1 pode escrever.")),
+                juce::dontSendNotification);
 
-        // O endereco mostrado sai sem o codigo. Ele serve para quem vai
-        // digitar a mao, e quem digita a mao entra so para ler -- o codigo
-        // tem 8 caracteres e ditar isso no meio de um show nao funciona.
-        p->endereco.setText (url.upToFirstOccurrenceOf ("?", false, false), juce::dontSendNotification);
-
-        p->aviso.setText (
-            id.remoteHost.isNotEmpty()
-                ? tl::tr ((
-                    "Display em outra m\xc3\xa1quina: aqui o QR abre s\xc3\xb3 para leitura. "
-                    "Para escrever, use o QR do Receiver daquela m\xc3\xa1quina."))
-            : temCodigo
-                ? tl::tr ((
-                    "Quem ler o QR pode escrever no tel\xc3\xa3o. Quem s\xc3\xb3 digitar o "
-                    "endere\xc3\xa7o v\xc3\xaa a conversa, mas n\xc3\xa3o escreve."))
-                : tl::tr ((
-                    "Ainda n\xc3\xa3o peguei o c\xc3\xb3" "digo de escrita do Display. "
-                    "Abra de novo em alguns segundos.")),
-            juce::dontSendNotification);
+        p->copiar.onClick = [url] { juce::SystemClipboard::copyTextToClipboard (url); };
     }
-
-    // Copia SEM o codigo: o endereco colado no WhatsApp da produ\xc3\xa7\xc3\xa3o nao
-    // deve carregar a permissao de escrever junto.
-    p->copiar.onClick = [url] { juce::SystemClipboard::copyTextToClipboard (url.upToFirstOccurrenceOf ("?", false, false)); };
 
     juce::CallOutBox::launchAsynchronously (std::move (panel), qrButton.getScreenBounds(), nullptr);
 }
-

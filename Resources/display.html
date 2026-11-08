@@ -169,10 +169,10 @@
   /* ======================================================================
      Escrever daqui.
 
-     O codigo de escrita chega no endereco do QR Code (?k=XXXXXXXX). Quem
-     apontou a camera entra escrevendo; quem so descobriu o endereco ve a
-     conversa e nada mais. O codigo fica guardado neste aparelho para a
-     pessoa nao precisar ler o QR de novo a cada vez.
+     Quem abre a pagina escreve. Houve um codigo dentro do QR Code que
+     separava quem leu a camera de quem so digitou o endereco; ele saiu,
+     porque atrapalhava mais do que protegia. A barreira real e a rede: so
+     chega aqui quem ja esta no Wi-Fi do local.
 
      Nome e cor sao deste aparelho e so dele -- nao ha cadastro em lugar
      nenhum. Um tecnico novo chega, le o QR, poe o nome e ja escreve.
@@ -182,11 +182,11 @@
   function guarda (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function le (k, padrao) { try { var v = localStorage.getItem(k); return v === null ? padrao : v; } catch (e) { return padrao; } }
 
-  var token = '';
+  // Endereco antigo, de um QR gerado antes da atualizacao, ainda pode trazer
+  // ?k=XXXX. Nao serve para nada agora, mas some da barra de endereco para
+  // nao parecer que faltou alguma coisa.
   try {
-    var m = /[?&]k=([A-Za-z0-9]+)/.exec(location.search);
-    if (m) { token = m[1]; guarda('tl.k', token); history.replaceState(null, '', location.pathname); }
-    else { token = le('tl.k', ''); }
+    if (/[?&]k=/.test(location.search)) history.replaceState(null, '', location.pathname);
   } catch (e) {}
 
   // Um id por aparelho, sorteado uma vez. E o que da a cada celular uma
@@ -253,18 +253,11 @@
     fetch('/say', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ k: token, id: meuId, name: meuNome, color: minhaCor, text: txt, imp: 1 })
+      body: JSON.stringify({ id: meuId, name: meuNome, color: minhaCor, text: txt, imp: 1 })
     }).then(function (r) {
       btnEnviar.disabled = false;
       if (r.ok) { campoTexto.value = ''; campoTexto.focus(); return; }
-      if (r.status === 403) {
-        // Ou a chave geral foi desligada no Receiver, ou o codigo foi
-        // trocado. Nos dois casos este aparelho precisa ler o QR de novo.
-        modoEscrita(false);
-        soLeitura.textContent = 'Escrita bloqueada. Leia o QR Code de novo no Receiver.';
-      } else {
-        status.textContent = 'não consegui enviar — tente de novo';
-      }
+      status.textContent = 'não consegui enviar — tente de novo';
     }).catch(function () {
       btnEnviar.disabled = false;
       status.textContent = 'sem conexão para enviar';
@@ -275,18 +268,12 @@
   campoTexto.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); enviar(); } });
 
   pintaEu();
-  modoEscrita(!!token);   // quem leu o QR ja entra escrevendo
+  modoEscrita(true);   // todo mundo que abre a pagina escreve
 
   function clearAll () { entries = {}; order = []; renderChat(); }
 
   function connect () {
     fetch('/state').then(function (r) { return r.json(); }).then(function (s) {
-      /* Quando o Receiver dispensa o QR, quem chegou digitando o endereco
-         tambem escreve. Sem isto o tecnico abriria pelo IP, a escrita estaria
-         liberada, e ele continuaria vendo "somente leitura" -- concluindo que
-         a funcao nao funciona. */
-      if (s.escritaLivre) modoEscrita(true);
-
       entries = {}; order = [];
       (s.entries || []).forEach(function (m) { entries[key(m)] = m; order.push(key(m)); });
       participants = s.participants || [];
