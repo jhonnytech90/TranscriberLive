@@ -105,6 +105,7 @@ namespace tl
 
         void abrirArquivo();
         void rolarSeNecessario();
+        static void aparar (const juce::File&);
         void escreverCabecalho();
         void limparAntigos();
         void drenarFila();
@@ -126,6 +127,10 @@ namespace tl
 
         //-- vitais --------------------------------------------------------------
         juce::CriticalSection      vitaisLock;
+        // Ultima linha gravada e quando: a de agora so vai para o arquivo
+        // se for diferente, ou se a batida periodica estiver vencida.
+        juce::String               ultimaLinhaVitais;
+        double                     ultimaVitaisEscritos = 0.0;
         std::map<int, VitalsFn>    vitais;
         int                        proximoVitalId = 1;
 

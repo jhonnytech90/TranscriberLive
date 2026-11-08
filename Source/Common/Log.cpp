@@ -93,18 +93,25 @@ namespace tl
         auto pasta = getFolder();
         pasta.createDirectory();
 
-        const auto agora = juce::Time::getCurrentTime();
+        /*  Um arquivo FIXO por programa, que vai sendo acrescentado.
 
-        // Um arquivo por PROCESSO. O JUCE nao expoe o PID de forma portatil,
-        // entao a marca vem do endereco deste objeto: e unica dentro da
-        // maquina enquanto o processo vive, que e o que precisamos para nao
-        // misturar o log do REAPER com o do app do Display.
-        const auto marca = juce::String::toHexString ((juce::pointer_sized_int) this)
-                               .getLastCharacters (6);
+            Antes era um arquivo por SESSAO, e o resultado media 6,7 MB: numa
+            sessao de 11 horas, 35.373 linhas de [vitais] -- 99% do arquivo --
+            e ainda assim so a sessao mais recente, enquanto o problema que o
+            suporte precisa ver costuma estar na ANTERIOR.
 
-        arquivo = pasta.getChildFile (agora.formatted ("%Y-%m-%d_%H-%M-%S") + "_"
-                                      + nomeDoProcesso() + "_" + marca + ".log");
+            Agora o historico de varias sessoes cabe num arquivo de alguns KB,
+            que sobe para o site num piscar. O teto em aparar() garante isso.
 
+            Continua um por programa (Receiver, Display, app) e nao um unico:
+            os tres rodam juntos na mesma maquina, e tres processos escrevendo
+            na mesma linha do mesmo arquivo embaralham o texto. Evitar isso com
+            trava entre processos custaria mais do que vale.                 */
+        arquivo = pasta.getChildFile (nomeDoProcesso() + ".log");
+        aparar (arquivo);
+
+        // O FileOutputStream do JUCE ja abre posicionado no FIM do arquivo:
+        // escrever aqui acrescenta, nao sobrescreve. E o que queremos.
         saida = std::make_unique<juce::FileOutputStream> (arquivo);
         if (saida->failedToOpen())
         {
@@ -112,36 +119,83 @@ namespace tl
             habilitado = false;   // sem pasta gravavel: o plugin roda igual, so nao loga
             return;
         }
-        bytesEscritos = 0;
+        bytesEscritos = arquivo.getSize();
+    }
+
+    /*  Teto do arquivo: passou do limite, as linhas mais velhas saem.
+
+        kTetoLog e o tamanho que queremos que o arquivo TENHA depois de aparar;
+        deixamos ele crescer ate o dobro antes de mexer, para nao reescrever o
+        arquivo a cada poucas linhas.
+
+        Cortamos na quebra de linha seguinte, nunca no meio de uma linha: log
+        pela metade na primeira linha confunde quem le.                      */
+    static constexpr juce::int64 kTetoLog = 256 * 1024;
+
+    void Log::aparar (const juce::File& f)
+    {
+        const auto tamanho = f.getSize();
+        if (tamanho <= kTetoLog * 2)
+            return;
+
+        juce::MemoryBlock bloco;
+        if (! f.loadFileAsData (bloco))
+            return;
+
+        auto* dados = static_cast<const char*> (bloco.getData());
+        auto  corte = (size_t) (bloco.getSize() - (size_t) kTetoLog);
+
+        while (corte < bloco.getSize() && dados[corte] != '\n')
+            ++corte;
+        if (corte < bloco.getSize()) ++corte;   // pula o proprio \n
+
+        juce::FileOutputStream novo (f);
+        if (novo.failedToOpen())
+            return;
+
+        novo.setPosition (0);
+        novo.truncate();
+        novo.writeText (juce::String ("--- inicio cortado: o arquivo passou de ")
+                            + juce::String (kTetoLog / 1024) + " KB ---" + juce::newLine,
+                        false, false, nullptr);
+        novo.write (dados + corte, bloco.getSize() - corte);
+        novo.flush();
     }
 
     // Chamada SEMPRE com saidaLock ja segurado.
     void Log::rolarSeNecessario()
     {
-        // 8 MB por arquivo ja cobre um show inteiro com folga
-        if (saida == nullptr || bytesEscritos < 8 * 1024 * 1024)
+        if (saida == nullptr || bytesEscritos < kTetoLog * 2)
             return;
 
-        saida->writeText (juce::String ("--- arquivo cheio, continuando em outro ---") + juce::newLine,
-                          false, false, nullptr);
         saida->flush();
         saida.reset();
-        abrirArquivo();
-        if (saida != nullptr)
-            escreverCabecalho();
+        aparar (arquivo);
+
+        saida = std::make_unique<juce::FileOutputStream> (arquivo);
+        if (saida->failedToOpen()) { saida.reset(); return; }
+        bytesEscritos = arquivo.getSize();
     }
 
+    /*  Varre os logs do formato antigo (um por sessao, com data no nome).
+
+        Quem atualiza de uma versao anterior tem dezenas deles na pasta, alguns
+        de varios MB. Nao servem mais para nada: o historico agora esta no
+        arquivo unico. Some com eles para a pasta nao ficar com 200 MB de lixo
+        que o cliente nunca vai olhar.                                       */
     void Log::limparAntigos()
     {
         auto pasta = getFolder();
         if (! pasta.isDirectory()) return;
 
-        auto arquivos = pasta.findChildFiles (juce::File::findFiles, false, "*.log");
-        // guarda os 15 mais recentes; o resto vai embora
-        arquivos.sort();
-        for (int i = 0; i < arquivos.size() - 15; ++i)
-            if (arquivos[i] != arquivo)
-                arquivos[i].deleteFile();
+        for (auto& f : pasta.findChildFiles (juce::File::findFiles, false, "*.log"))
+        {
+            // O formato novo e "<Programa>.log"; o antigo comecava com a data.
+            if (f == arquivo) continue;
+            if (f.getFileNameWithoutExtension().containsChar ('_')
+                && juce::CharacterFunctions::isDigit (f.getFileName()[0]))
+                f.deleteFile();
+        }
     }
 
     // Chamada SEMPRE com saidaLock ja segurado.
@@ -408,8 +462,22 @@ namespace tl
                    juce::String ((int) perdidos) + " eventos de audio nao couberam no anel");
     }
 
+    /*  Vitais: so quando MUDA, mais uma batida de vez em quando.
+
+        Isto era uma linha por segundo, sempre. Numa sessao de 11 horas deu
+        35.373 linhas identicas -- 6,6 dos 6,7 MB do arquivo -- quase todas
+        dizendo que nada estava acontecendo, porque o plugin estava aberto sem
+        licenca e sem transcrever.
+
+        Trinta e cinco mil linhas iguais nao contam nada que uma conte. Entao:
+        grava quando o texto muda, e a cada kBatidaVitais grava de novo mesmo
+        igual -- essa repeticao periodica nao e desperdicio, e o que prova que
+        o programa continuava vivo naquele intervalo. Sem ela, um travamento
+        de duas horas ficaria indistinguivel de duas horas paradas.         */
     void Log::emitirVitais()
     {
+        static constexpr double kBatidaVitais = 5 * 60 * 1000.0;   // 5 min
+
         juce::String linha;
         {
             const juce::ScopedLock sl (vitaisLock);
@@ -419,8 +487,20 @@ namespace tl
                 kv.second (linha);
         }
 
-        if (linha.isNotEmpty())
-            write (LogLevel::info, "vitais", linha.trim());
+        linha = linha.trim();
+        if (linha.isEmpty())
+            return;
+
+        const auto agora = juce::Time::getMillisecondCounterHiRes();
+        const bool mudou  = linha != ultimaLinhaVitais;
+        const bool naHora = agora - ultimaVitaisEscritos >= kBatidaVitais;
+
+        if (! mudou && ! naHora)
+            return;
+
+        ultimaLinhaVitais    = linha;
+        ultimaVitaisEscritos = agora;
+        write (LogLevel::info, "vitais", linha);
     }
 
     void Log::flushNow()
