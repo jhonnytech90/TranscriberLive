@@ -284,7 +284,7 @@ void DisplayAudioProcessorEditor::enviarMensagem()
     if (texto.isEmpty())
         return;
 
-    auto& hub = *processor.hub;
+    auto& hub = processor.hub.get();
 
     auto nome = nomeEditor.getText().trim();
     if (nome.isEmpty())
@@ -427,7 +427,7 @@ void DisplayAudioProcessorEditor::timerCallback()
     }
 
     // status
-    auto& hub = *processor.hub;
+    auto& hub = processor.hub.get();
     juce::String s;
     if (hub.isBusPrimary())      s = "UDP " + juce::String (hub.getBusPort()) + " ok";
     else if (hub.isMirroring())  s = tl::tr ("espelhando o Display principal desta maquina");

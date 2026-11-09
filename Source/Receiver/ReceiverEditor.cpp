@@ -470,7 +470,7 @@ void TranscriberLiveAudioProcessorEditor::mostrarAvisoDeUpdate (const juce::Stri
     if (versao.isEmpty())
         return;
 
-    auto& hub = *processor.hub;
+    auto& hub = processor.hub.get();
 
     // Adiou hoje: respeita o dia. Amanha o aviso volta.
     if (hub.getUpdateIgnorado() == versao && hub.getUpdateIgnoradoEm() == tl::Atualizacao::hoje())

@@ -48,17 +48,21 @@ namespace
         return {};
     }
 
+    /*  O tipo vem como texto ("IEEE80211", "Ethernet", "Bridge"...).
+
+        Comparar pelo texto, e nao pelas constantes kSCNetworkInterfaceType*,
+        e de proposito: parte delas nao esta declarada no SDK que o CI usa, e
+        o build quebrou exatamente nisso. O texto e estavel ha mais de uma
+        decada e nao depende de qual SDK compilou.                        */
     Adaptadores::Tipo tipoCF (CFStringRef t)
     {
-        if (t == nullptr)
-            return Adaptadores::Tipo::desconhecida;
+        const auto nome = deCF (t);
 
-        if (CFEqual (t, kSCNetworkInterfaceTypeIEEE80211))                 return Adaptadores::Tipo::semFio;
-        if (CFEqual (t, kSCNetworkInterfaceTypeEthernet))                  return Adaptadores::Tipo::cabeada;
-        if (CFEqual (t, kSCNetworkInterfaceTypeBridge))                    return Adaptadores::Tipo::ponte;
-        if (CFEqual (t, kSCNetworkInterfaceTypeVPN)
-            || CFEqual (t, kSCNetworkInterfaceTypeIPSec)
-            || CFEqual (t, kSCNetworkInterfaceTypePPP))                    return Adaptadores::Tipo::virtual_;
+        if (nome == "IEEE80211")                       return Adaptadores::Tipo::semFio;
+        if (nome == "Ethernet")                        return Adaptadores::Tipo::cabeada;
+        if (nome == "Bridge" || nome == "Bond")        return Adaptadores::Tipo::ponte;
+        if (nome == "VPN" || nome == "IPSec" || nome == "PPP" || nome == "L2TP")
+                                                       return Adaptadores::Tipo::virtual_;
 
         return Adaptadores::Tipo::desconhecida;
     }
