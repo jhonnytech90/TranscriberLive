@@ -6,7 +6,7 @@
     Edite Ferramentas/idioma/catalogo.py e gere de novo, senao a proxima
     geracao apaga a correcao feita aqui.
 
-    130 textos.
+    143 textos.
 */
 namespace tl
 {
@@ -146,6 +146,19 @@ namespace tl
             "\"Monitor\" = \"Monitor\"\n"
             "\"Escreva aqui e tecle Enter\" = \"Type here and press Enter\"\n"
             "\"N\xc3\xa3o consegui enviar. Confira a rede.\" = \"Could not send. Check the network.\"\n"
+            "\"Nenhuma licen\xc3\xa7" "a informada.\" = \"No license provided.\"\n"
+            "\"Formato inv\xc3\xa1lido (o texto parece incompleto).\" = \"Invalid format (the text looks incomplete).\"\n"
+            "\"Conte\xc3\xba" "do ileg\xc3\xadvel \xe2\x80\x94 copie a licen\xc3\xa7" "a inteira, incluindo todas as linhas.\" = \"Unreadable content \xe2\x80\x94 copy the whole license, including every line.\"\n"
+            "\"Assinatura inv\xc3\xa1lida \xe2\x80\x94 esta licen\xc3\xa7" "a n\xc3\xa3o foi emitida para o Transcriber Live.\" = \"Invalid signature \xe2\x80\x94 this license was not issued for Transcriber Live.\"\n"
+            "\"Licen\xc3\xa7" "a de outro produto.\" = \"License for another product.\"\n"
+            "\"Conte\xc3\xba" "do ileg\xc3\xadvel.\" = \"Unreadable content.\"\n"
+            "\"Esta licen\xc3\xa7" "a foi emitida para outro computador (\" = \"This license was issued for another computer (\"\n"
+            "\"Licen\xc3\xa7" "a expirada em \" = \"License expired on \"\n"
+            "\"Nenhuma licen\xc3\xa7" "a instalada nesta m\xc3\xa1quina.\" = \"No license installed on this machine.\"\n"
+            "\"A pasta de dados est\xc3\xa1 bloqueada para o seu usu\xc3\xa1rio (\" = \"The data folder is locked for your user (\"\n"
+            "\") \xe2\x80\x94 por isso a ativa\xc3\xa7\xc3\xa3o n\xc3\xa3o grava.\" = \") \xe2\x80\x94 so activation cannot save.\"\n"
+            "\"A licen\xc3\xa7" "a \xc3\xa9 v\xc3\xa1lida, mas n\xc3\xa3o consegui gravar em \" = \"The license is valid, but I could not save it to \"\n"
+            "\" \xe2\x80\x94 a pasta n\xc3\xa3o tem permiss\xc3\xa3o de escrita para o seu usu\xc3\xa1rio.\" = \" \xe2\x80\x94 the folder has no write permission for your user.\"\n"
         );
     }
 }

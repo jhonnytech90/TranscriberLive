@@ -1,5 +1,6 @@
 #include "License.h"
 #include "Hub.h"
+#include "Idioma.h"
 #include "Trace.h"
 
 namespace tl
@@ -117,8 +118,8 @@ namespace tl
                 blob += line.trim();
         blob = blob.removeCharacters (" \t\r\n");
 
-        if (blob.isEmpty())            { info.error = "Nenhuma licen\xc3\xa7" "a informada."; return info; }
-        if (! blob.containsChar ('.')) { info.error = "Formato inv\xc3\xa1lido (o texto parece incompleto)."; return info; }
+        if (blob.isEmpty())            { info.error = tl::tr ("Nenhuma licen\xc3\xa7" "a informada."); return info; }
+        if (! blob.containsChar ('.')) { info.error = tl::tr ("Formato inv\xc3\xa1lido (o texto parece incompleto)."); return info; }
 
         const auto b64    = blob.upToLastOccurrenceOf (".", false, false);
         const auto sigHex = blob.fromLastOccurrenceOf (".", false, false);
@@ -127,7 +128,7 @@ namespace tl
         juce::MemoryOutputStream payload;
         if (! juce::Base64::convertFromBase64 (payload, b64) || payload.getDataSize() == 0)
         {
-            info.error = "Conte\xc3\xba" "do ileg\xc3\xadvel \xe2\x80\x94 copie a licen\xc3\xa7" "a inteira, incluindo todas as linhas.";
+            info.error = tl::tr ("Conte\xc3\xba" "do ileg\xc3\xadvel \xe2\x80\x94 copie a licen\xc3\xa7" "a inteira, incluindo todas as linhas.");
             return info;
         }
 
@@ -141,7 +142,7 @@ namespace tl
         const juce::RSAKey publicKey (kPublicKey);
         if (! publicKey.applyToValue (value) || value != digest)
         {
-            info.error = "Assinatura inv\xc3\xa1lida \xe2\x80\x94 esta licen\xc3\xa7" "a n\xc3\xa3o foi emitida para o Transcriber Live.";
+            info.error = tl::tr ("Assinatura inv\xc3\xa1lida \xe2\x80\x94 esta licen\xc3\xa7" "a n\xc3\xa3o foi emitida para o Transcriber Live.");
             return info;
         }
 
@@ -159,20 +160,20 @@ namespace tl
 
             if (o->getProperty ("prod").toString() != kProduct)
             {
-                info.error = "Licen\xc3\xa7" "a de outro produto.";
+                info.error = tl::tr ("Licen\xc3\xa7" "a de outro produto.");
                 return info;
             }
         }
         else
         {
-            info.error = "Conte\xc3\xba" "do ileg\xc3\xadvel.";
+            info.error = tl::tr ("Conte\xc3\xba" "do ileg\xc3\xadvel.");
             return info;
         }
 
         // 5. máquina
         if (! getAllMachineIds().contains (info.machineId))
         {
-            info.error = "Esta licen\xc3\xa7" "a foi emitida para outro computador (" + info.machineId + ").";
+            info.error = tl::tr ("Esta licen\xc3\xa7" "a foi emitida para outro computador (") + info.machineId + ").";
             return info;
         }
 
@@ -182,7 +183,7 @@ namespace tl
             const auto today = juce::Time::getCurrentTime().formatted ("%Y-%m-%d");
             if (today > info.expires)
             {
-                info.error = "Licen\xc3\xa7" "a expirada em " + info.expires + ".";
+                info.error = tl::tr ("Licen\xc3\xa7" "a expirada em ") + info.expires + ".";
                 return info;
             }
         }
@@ -199,10 +200,10 @@ namespace tl
             LicenseInfo info;
             const auto pasta = f.getParentDirectory();
             if (pasta.isDirectory() && ! pasta.hasWriteAccess())
-                info.error = "A pasta de dados esta bloqueada para o seu usuario ("
-                           + pasta.getFullPathName() + ") \xe2\x80\x94 por isso a ativacao nao grava.";
+                info.error = tl::tr ("A pasta de dados est\xc3\xa1 bloqueada para o seu usu\xc3\xa1rio (")
+                           + pasta.getFullPathName() + tl::tr (") \xe2\x80\x94 por isso a ativa\xc3\xa7\xc3\xa3o n\xc3\xa3o grava.");
             else
-                info.error = "Nenhuma licen\xc3\xa7" "a instalada nesta m\xc3\xa1quina.";
+                info.error = tl::tr ("Nenhuma licen\xc3\xa7" "a instalada nesta m\xc3\xa1quina.");
             return info;
         }
         return verify (f.loadFileAsString());
@@ -236,11 +237,11 @@ namespace tl
         if (! f.replaceWithText (licenseText.trim() + juce::newLine))
         {
             info.valid = false;
-            info.error = juce::String ("A licenca e valida, mas nao consegui gravar em ")
+            info.error = tl::tr ("A licen\xc3\xa7" "a \xc3\xa9 v\xc3\xa1lida, mas n\xc3\xa3o consegui gravar em ")
                        + f.getFullPathName()
                        + (pasta.hasWriteAccess()
-                            ? "."
-                            : juce::String (" \xe2\x80\x94 a pasta nao tem permissao de escrita para o seu usuario."));
+                            ? juce::String (".")
+                            : tl::tr (" \xe2\x80\x94 a pasta n\xc3\xa3o tem permiss\xc3\xa3o de escrita para o seu usu\xc3\xa1rio."));
             return info;
         }
 

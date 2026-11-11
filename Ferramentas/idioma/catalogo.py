@@ -189,4 +189,19 @@ EN.update({
 "Monitor": "Monitor",
 "Escreva aqui e tecle Enter": "Type here and press Enter",
 "Não consegui enviar. Confira a rede.": "Could not send. Check the network.",
+
+# -- mensagens de licenca (antes saiam com o acento quebrado: "licenÃ§a")
+"Nenhuma licença informada.": "No license provided.",
+"Formato inválido (o texto parece incompleto).": "Invalid format (the text looks incomplete).",
+"Conteúdo ilegível — copie a licença inteira, incluindo todas as linhas.": "Unreadable content — copy the whole license, including every line.",
+"Assinatura inválida — esta licença não foi emitida para o Transcriber Live.": "Invalid signature — this license was not issued for Transcriber Live.",
+"Licença de outro produto.": "License for another product.",
+"Conteúdo ilegível.": "Unreadable content.",
+"Esta licença foi emitida para outro computador (": "This license was issued for another computer (",
+"Licença expirada em ": "License expired on ",
+"Nenhuma licença instalada nesta máquina.": "No license installed on this machine.",
+"A pasta de dados está bloqueada para o seu usuário (": "The data folder is locked for your user (",
+") — por isso a ativação não grava.": ") — so activation cannot save.",
+"A licença é válida, mas não consegui gravar em ": "The license is valid, but I could not save it to ",
+" — a pasta não tem permissão de escrita para o seu usuário.": " — the folder has no write permission for your user.",
 })
