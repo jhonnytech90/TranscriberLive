@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <functional>
+#include <atomic>
 #include "Idioma.h"
 #include "Log.h"
 
@@ -14,7 +15,8 @@
 
     Entao o proprio plugin pergunta. As regras aqui sao de bom senso:
 
-      - uma consulta por processo, nao por janela aberta;
+      - uma consulta por processo (repetida a cada 3 h se o host ficar aberto),
+        nao por janela aberta;
       - 4 s de paciencia e acabou: casa de show tem rede ruim, e e melhor
         nao avisar nada do que fazer o host engasgar na abertura;
       - falhou, fica calado. Nunca aparece erro de rede por causa disto;
@@ -52,28 +54,61 @@ namespace tl
             return false;
         }
 
-        /*  Resultado desta sessao. Vazio enquanto a consulta nao voltou. */
-        static Resultado& cache()
+        /*  Ultimo resultado conhecido. 'versao' vazia = o site ainda nao
+            respondeu; a interface mostra "verificando" ou "nao consegui
+            verificar" conforme falhou().                                    */
+        static juce::CriticalSection& trava()
+        {
+            static juce::CriticalSection t;
+            return t;
+        }
+
+        static Resultado& guardado()
         {
             static Resultado r;
             return r;
         }
 
-        /*  Pergunta ao site, uma vez so. 'pronto' roda na thread da interface
-            e so e chamado quando ha mesmo versao nova.                      */
-        static void consultar (const juce::String& versaoAtual,
-                               std::function<void (Resultado)> pronto)
+        /** Copia do ultimo resultado. Qualquer janela pode chamar a qualquer hora. */
+        static Resultado obter()
         {
-            static std::atomic<bool> jaPerguntou { false };
+            const juce::ScopedLock sl (trava());
+            return guardado();
+        }
 
-            if (jaPerguntou.exchange (true))
-            {
-                if (cache().temNova && pronto != nullptr)
-                    pronto (cache());
+        /** true se a ultima tentativa falhou (rede, site fora do ar). */
+        static std::atomic<bool>& falhou()
+        {
+            static std::atomic<bool> f { false };
+            return f;
+        }
+
+        /*  Pergunta ao site se (a) nunca perguntou ou (b) a ultima resposta e
+            velha (3 h) -- host de palco fica aberto por dias.
+
+            O resultado NAO vai para um callback preso a uma janela. O SuperRack
+            cria e destroi o editor do plugin varias vezes na abertura; quem
+            esperava o callback era justamente uma janela que ja nao existia, e
+            a janela que o tecnico via nunca recebia o aviso. Agora o resultado
+            fica guardado e cada janela le quando quiser (obter()).          */
+        static void atualizarSeNecessario (const juce::String& versaoAtual, bool forcar = false)
+        {
+            static std::atomic<bool> emAndamento { false };
+            static std::atomic<juce::int64> ultima { 0 };
+
+            const auto agora = juce::Time::currentTimeMillis();
+            const juce::int64 intervalo = falhou().load() ? 5 * 60 * 1000          // falhou: tenta em 5 min
+                                                         : 3 * 60 * 60 * 1000;     // deu certo: 3 h
+
+            if (! forcar && ultima.load() != 0 && agora - ultima.load() < intervalo)
                 return;
-            }
 
-            juce::Thread::launch ([versaoAtual, pronto]
+            if (emAndamento.exchange (true))
+                return;
+
+            ultima = agora;
+
+            juce::Thread::launch ([versaoAtual]
             {
                 Resultado r;
 
@@ -97,17 +132,20 @@ namespace tl
                 if (r.url.isEmpty())
                     r.url = "https://transcriberlive.stream/#baixar";
 
-                r.temNova = r.versao.isNotEmpty() && ehMaisNova (r.versao, versaoAtual);
+                const bool ok = r.versao.isNotEmpty();
+                r.temNova = ok && ehMaisNova (r.versao, versaoAtual);
 
-                if (r.temNova)
-                    TL_LOGI ("update", "versao nova no site: " + r.versao);
+                // Sempre no log: foi a falta disto que deixou o defeito invisivel.
+                TL_LOGI ("update", ok ? "site respondeu versao " + r.versao + " | instalada " + versaoAtual
+                                        + (r.temNova ? " | HA VERSAO NOVA" : " | em dia")
+                                      : juce::String ("consulta sem resposta (rede ou site fora do ar)"));
 
-                juce::MessageManager::callAsync ([r, pronto]
                 {
-                    cache() = r;
-                    if (r.temNova && pronto != nullptr)
-                        pronto (r);
-                });
+                    const juce::ScopedLock sl (trava());
+                    if (ok) guardado() = r;
+                }
+                falhou() = ! ok;
+                emAndamento = false;
             });
         }
 

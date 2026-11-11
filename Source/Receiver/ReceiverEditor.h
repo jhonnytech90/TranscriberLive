@@ -28,6 +28,44 @@ private:
 };
 
 //==============================================================================
+/** Botao "mais opcoes": as tres barrinhas que todo app tem. Uma bolinha
+    vermelha no canto avisa que ha versao nova -- fica la ate atualizar. */
+class MenuButton : public juce::Button
+{
+public:
+    MenuButton() : juce::Button ("menu") {}
+
+    void setBadge (bool b) { if (badge != b) { badge = b; repaint(); } }
+
+    void paintButton (juce::Graphics& g, bool over, bool down) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (2.0f);
+        g.setColour (juce::Colour (0xff1a222d).brighter (down ? 0.25f : over ? 0.12f : 0.0f));
+        g.fillRoundedRectangle (r, 6.0f);
+        g.setColour (juce::Colour (0xff2c3a4b));
+        g.drawRoundedRectangle (r, 6.0f, 1.0f);
+
+        g.setColour (juce::Colour (0xffe8ecf3));
+        auto c = r.reduced (r.getWidth() * 0.26f, 0.0f);
+        const float h = 2.4f, gap = 5.0f, y0 = r.getCentreY() - h * 1.5f - gap;
+        for (int i = 0; i < 3; ++i)
+            g.fillRoundedRectangle (c.getX(), y0 + (float) i * (h + gap),
+                                    c.getWidth(), h, 1.2f);
+
+        if (badge)
+        {
+            const float d = 10.0f;
+            auto b = juce::Rectangle<float> (getWidth() - d - 0.5f, 0.5f, d, d);
+            g.setColour (juce::Colour (0xff070a0f)); g.fillEllipse (b.expanded (1.5f));
+            g.setColour (juce::Colour (0xffe5484d)); g.fillEllipse (b);
+        }
+    }
+
+private:
+    bool badge = false;
+};
+
+//==============================================================================
 /** Editor compacto do Receiver. */
 class TranscriberLiveAudioProcessorEditor : public juce::AudioProcessorEditor,
                                             private juce::Timer,
@@ -39,9 +77,12 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
 
 private:
     void timerCallback() override;
+    void mostrarMenu();
     void refreshModoUi();
     void applyIdentityFromUi();
     void loadIdentityToUi();
@@ -71,6 +112,7 @@ private:
     juce::Label        nameLabel, importanceLabel, modoLabel, gateLabel, vadLabel, holdLabel;
     juce::TextEditor   nameEditor;
     juce::TextButton   colourButton, licenseButton, logButton { "Log" }, qrButton { "QR" };
+    MenuButton         menuButton;
     juce::TextButton   btBaixar, btIgnorar;   // so aparecem com versao nova no site
     juce::String       versaoNova, urlDaVersaoNova;
     juce::ComboBox     importanceBox, modoBox, idiomaBox;

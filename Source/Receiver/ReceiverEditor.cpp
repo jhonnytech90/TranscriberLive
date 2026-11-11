@@ -86,6 +86,10 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
 
     addAndMakeVisible (logo);
 
+    menuButton.onClick = [this] { mostrarMenu(); };
+    menuButton.setTooltip (tl::tr ("Mais op\xc3\xa7" "\xc3\xb5" "es: vers\xc3\xa3o, licen\xc3\xa7" "a e idioma"));
+    addAndMakeVisible (menuButton);
+
     auto initLabel = [this] (juce::Label& l, const juce::String& text, float size, juce::Colour c, juce::Justification j = juce::Justification::left)
     {
         l.setText (text, juce::dontSendNotification);
@@ -154,7 +158,6 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
         licensePanelOpen = ! licensePanelOpen;
         refreshLicenseUi();
     };
-    addAndMakeVisible (licenseButton);
 
     // ---- licença -----------------------------------------------------------------
     licensePanel.onActivate = [this] (const juce::String& text)
@@ -204,7 +207,6 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     {
         processor.hub->setIdioma (tl::idiomaDeIndice (idiomaBox.getSelectedItemIndex()));
     };
-    addAndMakeVisible (idiomaBox);
 
     tl::AvisoDeIdioma::get().addChangeListener (this);
     aplicarTextos();
@@ -263,13 +265,7 @@ TranscriberLiveAudioProcessorEditor::TranscriberLiveAudioProcessorEditor (Transc
     };
 
     {
-        juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> seguro (this);
-        tl::Atualizacao::consultar (JucePlugin_VersionString,
-                                    [seguro] (tl::Atualizacao::Resultado r)
-                                    {
-                                        if (seguro != nullptr)
-                                            seguro->mostrarAvisoDeUpdate (r.versao, r.url);
-                                    });
+        tl::Atualizacao::atualizarSeNecessario (JucePlugin_VersionString);
     }
 
     startTimerHz (15);
@@ -354,6 +350,8 @@ void TranscriberLiveAudioProcessorEditor::resized()
 
     // ---- topo: status à esquerda, logo à direita --------------------------------
     auto top = r.removeFromTop (kHeaderH).reduced (12, 6);
+    menuButton.setBounds (top.removeFromRight (32).withSizeKeepingCentre (32, 30));
+    top.removeFromRight (10);
     auto logoArea = top.removeFromRight (tl::LogoBadge::widthForHeight (kLogoH));
     logo.setBounds (logoArea.withSizeKeepingCentre (logoArea.getWidth(), kLogoH));
     top.removeFromRight (12);
@@ -382,8 +380,6 @@ void TranscriberLiveAudioProcessorEditor::resized()
     row1.removeFromRight (6);
     qrButton.setBounds (row1.removeFromRight (40).reduced (0, 2));
     row1.removeFromRight (6);
-    licenseButton.setBounds (row1.removeFromRight (74).reduced (0, 2));
-    row1.removeFromRight (6);
     flashButton.setBounds (row1.removeFromRight (62));
     row1.removeFromRight (10);
 
@@ -400,10 +396,6 @@ void TranscriberLiveAudioProcessorEditor::resized()
     // linha 2: modo
     auto row2 = r.removeFromTop (30);
     modoLabel.setBounds (row2.removeFromLeft (42));
-    // O seletor de idioma rouba a direita desta linha: a caixa do modo tem
-    // tres itens curtos e sobrava largura demais para ela.
-    idiomaBox.setBounds (row2.removeFromRight (150).reduced (0, 2));
-    row2.removeFromRight (8);
     modoBox.setBounds (row2.reduced (0, 2));
 
     r.removeFromTop (10);
@@ -437,7 +429,7 @@ void TranscriberLiveAudioProcessorEditor::setControlsVisible (bool v)
 {
     for (auto* c : std::initializer_list<juce::Component*> {
              &nameLabel, &nameEditor, &colourButton, &importanceLabel, &importanceBox, &flashButton,
-             &qrButton, &modoLabel, &modoBox, &idiomaBox, &meter, &speechLabel,
+             &qrButton, &modoLabel, &modoBox, &meter, &speechLabel,
              &gateSlider, &vadSlider, &holdSlider, &gateLabel, &vadLabel, &holdLabel,
              &partialsButton, &lastLineLabel })
         c->setVisible (v);
@@ -452,7 +444,6 @@ void TranscriberLiveAudioProcessorEditor::refreshLicenseUi()
     licensePanel.setInfo (info, info.valid);      // só pode fechar se estiver licenciado
     licensePanel.setVisible (showPanel);
     setControlsVisible (! showPanel);
-    licenseButton.setVisible (info.valid);       // sem licença o painel já está aberto
     resized();
     repaint();
 }
@@ -488,12 +479,84 @@ void TranscriberLiveAudioProcessorEditor::mostrarAvisoDeUpdate (const juce::Stri
 }
 
 //==============================================================================
+/*  Clique no logo abre o site oficial. O logo nao intercepta o mouse (e so
+    desenho), entao o clique chega aqui no editor.                          */
+void TranscriberLiveAudioProcessorEditor::mouseUp (const juce::MouseEvent& e)
+{
+    if (logo.getBounds().contains (e.getPosition()))
+        juce::URL ("https://transcriberlive.stream").launchInDefaultBrowser();
+}
+
+void TranscriberLiveAudioProcessorEditor::mouseMove (const juce::MouseEvent& e)
+{
+    setMouseCursor (logo.getBounds().contains (e.getPosition()) ? juce::MouseCursor::PointingHandCursor
+                                                                : juce::MouseCursor::NormalCursor);
+}
+
+/*  Menu "mais opcoes" (as tres barrinhas): versao instalada, versao do site,
+    Baixar quando ha nova, Licenca e Idioma. Menu comum -- nada escondido.   */
+void TranscriberLiveAudioProcessorEditor::mostrarMenu()
+{
+    const auto up = tl::Atualizacao::obter();
+
+    juce::PopupMenu m;
+    m.addItem (1000, tr ("Vers\xc3\xa3o instalada: ") + juce::String (JucePlugin_VersionString), false);
+
+    if (up.versao.isEmpty())
+        m.addItem (1001, tl::Atualizacao::falhou().load() ? tr ("N\xc3\xa3o consegui verificar atualiza\xc3\xa7\xc3\xb5" "es")
+                                                          : tr ("Verificando atualiza\xc3\xa7\xc3\xb5" "es..."), false);
+    else
+        m.addItem (1001, tr ("\xc3\x9altima vers\xc3\xa3o: ") + up.versao, false);
+
+    if (up.temNova)
+        m.addItem (1002, tr ("Baixar a vers\xc3\xa3o ") + up.versao);
+    else if (up.versao.isNotEmpty())
+        m.addItem (1003, tr ("Voc\xc3\xaa est\xc3\xa1 na vers\xc3\xa3o mais recente"), false);
+    else
+        m.addItem (1004, tr ("Verificar de novo"));
+
+    m.addSeparator();
+    m.addItem (2000, tr ("Licen\xc3\xa7" "a..."));
+    m.addSeparator();
+
+    juce::PopupMenu idiomas;
+    for (int i = 0; i < 3; ++i)
+        idiomas.addItem (3000 + i, tl::rotuloIdioma (tl::idiomaDeIndice (i)), true,
+                         i == tl::indiceDeIdioma (processor.hub->getIdioma()));
+    m.addSubMenu (tr ("Idioma \xe2\x80\x94 Language"), idiomas);
+
+    juce::Component::SafePointer<TranscriberLiveAudioProcessorEditor> seguro (this);
+    const auto urlBaixar = up.url;
+
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&menuButton),
+                     [seguro, urlBaixar] (int id)
+    {
+        if (seguro == nullptr || id == 0) return;
+
+        if (id == 1002)      juce::URL (urlBaixar).launchInDefaultBrowser();
+        else if (id == 1004) tl::Atualizacao::atualizarSeNecessario (JucePlugin_VersionString, true);
+        else if (id == 2000) { seguro->licensePanelOpen = ! seguro->licensePanelOpen; seguro->refreshLicenseUi(); }
+        else if (id >= 3000 && id < 3003)
+            seguro->processor.hub->setIdioma (tl::idiomaDeIndice (id - 3000));
+    });
+}
+
+//==============================================================================
 void TranscriberLiveAudioProcessorEditor::timerCallback()
 {
     auto& eng = processor.engine;
 
     if (processor.isLicensed() != lastLicensed)
         refreshLicenseUi();
+
+    // Versao nova: a janela le o resultado guardado (ver Atualizacao.h).
+    tl::Atualizacao::atualizarSeNecessario (JucePlugin_VersionString);
+    {
+        const auto up = tl::Atualizacao::obter();
+        menuButton.setBadge (up.temNova);
+        if (up.temNova && versaoNova != up.versao)
+            mostrarAvisoDeUpdate (up.versao, up.url);
+    }
 
     if (! lastLicensed)
     {

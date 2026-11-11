@@ -6,7 +6,7 @@
     Edite Ferramentas/idioma/catalogo.py e gere de novo, senao a proxima
     geracao apaga a correcao feita aqui.
 
-    143 textos.
+    153 textos.
 */
 namespace tl
 {
@@ -159,6 +159,16 @@ namespace tl
             "\") \xe2\x80\x94 por isso a ativa\xc3\xa7\xc3\xa3o n\xc3\xa3o grava.\" = \") \xe2\x80\x94 so activation cannot save.\"\n"
             "\"A licen\xc3\xa7" "a \xc3\xa9 v\xc3\xa1lida, mas n\xc3\xa3o consegui gravar em \" = \"The license is valid, but I could not save it to \"\n"
             "\" \xe2\x80\x94 a pasta n\xc3\xa3o tem permiss\xc3\xa3o de escrita para o seu usu\xc3\xa1rio.\" = \" \xe2\x80\x94 the folder has no write permission for your user.\"\n"
+            "\"Mais op\xc3\xa7\xc3\xb5" "es: vers\xc3\xa3o, licen\xc3\xa7" "a e idioma\" = \"More options: version, license and language\"\n"
+            "\"Vers\xc3\xa3o instalada: \" = \"Installed version: \"\n"
+            "\"N\xc3\xa3o consegui verificar atualiza\xc3\xa7\xc3\xb5" "es\" = \"Could not check for updates\"\n"
+            "\"Verificando atualiza\xc3\xa7\xc3\xb5" "es...\" = \"Checking for updates...\"\n"
+            "\"\xc3\x9altima vers\xc3\xa3o: \" = \"Latest version: \"\n"
+            "\"Baixar a vers\xc3\xa3o \" = \"Download version \"\n"
+            "\"Voc\xc3\xaa est\xc3\xa1 na vers\xc3\xa3o mais recente\" = \"You are on the latest version\"\n"
+            "\"Verificar de novo\" = \"Check again\"\n"
+            "\"Licen\xc3\xa7" "a...\" = \"License...\"\n"
+            "\"Idioma \xe2\x80\x94 Language\" = \"Language \xe2\x80\x94 Idioma\"\n"
         );
     }
 }
