@@ -123,7 +123,10 @@ namespace tl
             if (codigo >= 200 && codigo < 300)
                 return {};
 
-            if (auto* r = juce::JSON::parse (resposta).getDynamicObject())
+            // O var vive ate o fim da funcao: getDynamicObject() aponta para dentro dele.
+            const auto corpoJson = juce::JSON::parse (resposta);
+
+            if (auto* r = corpoJson.getDynamicObject())
                 if (r->hasProperty ("erro"))
                     return r->getProperty ("erro").toString();
 

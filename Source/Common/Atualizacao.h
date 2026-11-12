@@ -122,7 +122,13 @@ namespace tl
 
                 if (json.isNotEmpty())
                 {
-                    if (auto* o = juce::JSON::parse (json).getDynamicObject())
+                    /*  O var precisa viver ate o fim do bloco: getDynamicObject()
+                        devolve ponteiro para um objeto que pertence a ele. Com
+                        o var temporario no proprio 'if' o objeto era liberado
+                        antes de ser lido e a versao vinha sempre vazia.     */
+                    const auto resposta = juce::JSON::parse (json);
+
+                    if (auto* o = resposta.getDynamicObject())
                     {
                         r.versao = o->getProperty ("versao").toString().trim();
                         r.url    = o->getProperty ("url").toString().trim();
